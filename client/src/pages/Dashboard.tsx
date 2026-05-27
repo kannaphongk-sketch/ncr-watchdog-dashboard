@@ -94,7 +94,7 @@ function formatTime(date: Date | string | null | undefined): string {
   });
 }
 
-function formatShortTime(date: Date | string | null | undefined): string {
+function formatShortTime(date: Date | string | number | null | undefined): string {
   if (!date) return "—";
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return "—";
