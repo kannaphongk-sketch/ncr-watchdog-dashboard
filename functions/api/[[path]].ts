@@ -2,7 +2,7 @@ interface Env {
   BACKEND_ORIGIN?: string;
 }
 
-const DEFAULT_BACKEND_ORIGIN = "http://35.196.168.113:3000";
+const DEFAULT_BACKEND_ORIGIN = "http://35.196.168.113.sslip.io:3000";
 
 export const onRequest: PagesFunction<Env> = async context => {
   const backendOrigin = (context.env.BACKEND_ORIGIN || DEFAULT_BACKEND_ORIGIN).replace(/\/$/, "");
