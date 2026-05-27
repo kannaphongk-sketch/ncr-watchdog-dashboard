@@ -176,17 +176,42 @@ var env_exports = {};
 __export(env_exports, {
   ENV: () => ENV
 });
-var EXACT_TELEGRAM_IDS, ENV;
+function firstNonEmptyEnv(...names) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+function normalizeTelegramIds(value) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const requiredId of REQUIRED_TELEGRAM_IDS) ids.add(requiredId);
+  for (const rawId of (value || "").split(",")) {
+    const chatId = rawId.trim();
+    if (chatId) ids.add(chatId);
+  }
+  return Array.from(ids).join(",");
+}
+var REQUIRED_TELEGRAM_IDS, EXACT_TELEGRAM_IDS, ENV;
 var init_env = __esm({
   "server/_core/env.ts"() {
     "use strict";
-    EXACT_TELEGRAM_IDS = "8855631169,8674647124,8216202664";
+    REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"];
+    EXACT_TELEGRAM_IDS = REQUIRED_TELEGRAM_IDS.join(",");
     ENV = {
       cfApiToken: process.env.CF_API_TOKEN ?? "",
       cfZoneId: process.env.CF_ZONE_ID ?? "",
-      tgBotToken: process.env.TELEGRAM_BOT_TOKEN ?? process.env.TG_BOT_TOKEN ?? "",
-      tgChatId: EXACT_TELEGRAM_IDS,
-      tgAuthorizedChatIds: EXACT_TELEGRAM_IDS,
+      tgBotToken: firstNonEmptyEnv(
+        "TELEGRAM_BOT_TOKEN",
+        "TG_BOT_TOKEN",
+        "TELEGRAM_TOKEN",
+        "TG_TOKEN",
+        "BOT_TOKEN",
+        "NCR_TELEGRAM_BOT_TOKEN",
+        "NCR_WATCHDOG_TELEGRAM_BOT_TOKEN"
+      ),
+      tgChatId: normalizeTelegramIds(firstNonEmptyEnv("TELEGRAM_CHAT_IDS", "TELEGRAM_CHAT_ID", "TG_CHAT_IDS", "TG_CHAT_ID", "TELEGRAM_RECIPIENT_IDS")),
+      tgAuthorizedChatIds: normalizeTelegramIds(firstNonEmptyEnv("TELEGRAM_AUTHORIZED_CHAT_IDS", "TG_AUTHORIZED_CHAT_IDS", "TELEGRAM_CHAT_IDS", "TELEGRAM_CHAT_ID")),
       dashboardUrl: process.env.DASHBOARD_URL ?? process.env.FRONTEND_URL ?? "https://29bfa18a.ncr-dashboard.pages.dev",
       targetSite: "https://nakornchiangrainews.com",
       ttfbThresholdMs: 500,
@@ -1717,17 +1742,32 @@ __export(telegram_exports, {
   buildWpDbLatencyAlert: () => buildWpDbLatencyAlert,
   sendTelegramMessage: () => sendTelegramMessage
 });
-async function sendTelegramMessage(text2) {
-  const chatIds = getTelegramChatIds();
-  if (!ENV.tgBotToken || chatIds.length === 0) {
-    return { success: false, error: "Telegram credentials not configured" };
+function normalizeTelegramChatIds(value) {
+  const ids = new Set(REQUIRED_TELEGRAM_IDS2);
+  const values = Array.isArray(value) ? value : String(value ?? ENV.tgChatId ?? "").split(",");
+  for (const rawId of values) {
+    const chatId = String(rawId ?? "").trim();
+    if (chatId) ids.add(chatId);
+  }
+  return Array.from(ids);
+}
+function resolveTelegramBotToken(override) {
+  return String(
+    override?.botToken || ENV.tgBotToken || process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN || process.env.TELEGRAM_TOKEN || process.env.TG_TOKEN || process.env.BOT_TOKEN || process.env.NCR_TELEGRAM_BOT_TOKEN || process.env.NCR_WATCHDOG_TELEGRAM_BOT_TOKEN || ""
+  ).trim();
+}
+async function sendTelegramMessage(text2, override) {
+  const botToken = resolveTelegramBotToken(override);
+  const chatIds = normalizeTelegramChatIds(override?.chatIds);
+  if (!botToken || chatIds.length === 0) {
+    return { success: false, error: "Telegram bot token is missing; set TELEGRAM_BOT_TOKEN, TG_BOT_TOKEN, or TELEGRAM_TOKEN in the backend/Pages environment" };
   }
   const messageIds = [];
   const errors = [];
   await Promise.all(
     chatIds.map(async (chatId) => {
       try {
-        const res = await fetch(`https://api.telegram.org/bot${ENV.tgBotToken}/sendMessage`, {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2240,12 +2280,12 @@ All monitored URLs are indexed or reported as indexed by Google Search Console.`
   }
   return msg;
 }
-var getTelegramChatIds;
+var REQUIRED_TELEGRAM_IDS2;
 var init_telegram = __esm({
   "server/telegram.ts"() {
     "use strict";
     init_env();
-    getTelegramChatIds = () => ENV.tgChatId.split(",").map((chatId) => chatId.trim()).filter(Boolean);
+    REQUIRED_TELEGRAM_IDS2 = ["8855631169", "8674647124", "8216202664"];
   }
 });
 
@@ -4772,6 +4812,21 @@ async function maybeRevertSecurityLevel(alertsFired) {
 }
 
 // server/routers.ts
+function readHeaderValue(value) {
+  return Array.isArray(value) ? value.find(Boolean)?.trim() ?? "" : String(value ?? "").trim();
+}
+function getTelegramCredentialOverrides(req) {
+  return {
+    botToken: readHeaderValue(req.headers["x-ncr-telegram-bot-token"]),
+    chatIds: readHeaderValue(req.headers["x-ncr-telegram-chat-ids"])
+  };
+}
+function calculateRealtimeUptimePercent(history, currentIsUp) {
+  const checks = [{ isUp: currentIsUp }, ...history].slice(0, 100);
+  if (checks.length === 0) return currentIsUp ? 100 : 0;
+  const upCount = checks.filter((check) => Boolean(check.isUp)).length;
+  return upCount / checks.length * 100;
+}
 var appRouter = router({
   system: systemRouter,
   auth: router({
@@ -4827,9 +4882,17 @@ var appRouter = router({
     }),
     quickStatus: publicProcedure.query(async () => {
       const check = await checkSite();
-      const uptimePercent = await getUptimePercent();
+      await saveMonitorCheck({
+        httpCode: check.httpCode,
+        ttfbMs: check.ttfbMs,
+        cacheStatus: check.cacheStatus,
+        cfRay: check.cfRay,
+        isUp: check.isUp
+      });
+      const recentChecks = await getRecentChecks(100);
+      const uptimePercent = calculateRealtimeUptimePercent(recentChecks.slice(1), check.isUp);
       const avgTtfbMs = await getAvgTtfb();
-      return { ...check, uptimePercent, avgTtfbMs };
+      return { ...check, uptimePercent, avgTtfbMs, checkedAt: (/* @__PURE__ */ new Date()).toISOString() };
     }),
     history: publicProcedure.query(async () => {
       const checks = await getRecentChecks(100);
@@ -4850,7 +4913,8 @@ var appRouter = router({
       const [cf, stats404] = await Promise.all([getCFAnalytics(), get404Stats()]);
       return { ...cf, top404Urls: cf.top404Urls };
     }),
-    sendTestReport: publicProcedure.mutation(async () => {
+    sendTestReport: publicProcedure.mutation(async ({ ctx }) => {
+      const telegramOverrides = getTelegramCredentialOverrides(ctx.req);
       const checks = await getRecentChecks(1);
       const latestCheck = checks[0];
       const uptimePercent = await getUptimePercent();
@@ -4876,7 +4940,7 @@ var appRouter = router({
         top404Urls: cfData.top404Urls
       };
       const msg = buildDailyReport("morning", reportData);
-      const result = await sendTelegramMessage(msg);
+      const result = await sendTelegramMessage(msg, telegramOverrides);
       return { success: result.success, messageId: result.messageId, error: result.error };
     }),
     schedulerStatus: publicProcedure.query(async () => {

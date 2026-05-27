@@ -354,8 +354,26 @@ export default function Dashboard() {
     }
   }, [sendTestReportMutation]);
 
-  const status = statusQuery.data;
+  const rawStatus = statusQuery.data;
   const history = historyQuery.data ?? [];
+  const latestHistoryCheck = history[0];
+  const hasRealtimeStatus = rawStatus?.httpCode !== undefined && rawStatus?.httpCode !== null;
+  const normalizedHttpCode = toFiniteNumber(rawStatus?.httpCode, toFiniteNumber(latestHistoryCheck?.httpCode, 0));
+  const normalizedIsUp = hasRealtimeStatus
+    ? Boolean(rawStatus?.isUp) && normalizedHttpCode >= 200 && normalizedHttpCode < 400
+    : Boolean(latestHistoryCheck?.isUp);
+  const status = rawStatus
+    ? { ...rawStatus, httpCode: normalizedHttpCode, isUp: normalizedIsUp }
+    : latestHistoryCheck
+    ? {
+        ...latestHistoryCheck,
+        uptimePercent: undefined,
+        avgTtfbMs: undefined,
+        httpCode: normalizedHttpCode,
+        ttfbMs: toFiniteNumber(latestHistoryCheck.ttfbMs, 0),
+        isUp: normalizedIsUp,
+      }
+    : undefined;
   const cf = cfQuery.data;
   const scheduler = schedulerQuery.data;
   const alerts = alertsQuery.data ?? [];
@@ -387,7 +405,11 @@ export default function Dashboard() {
     { name: "Cache MISS", value: Math.max(0, cfTotalRequests - cfCachedRequests), fill: "oklch(0.22 0.02 240)" },
   ];
 
-  const uptimePercent = toFiniteNumber(status?.uptimePercent, 100);
+  const historyForUptime = status ? [{ isUp: status.isUp }, ...history.slice(status === latestHistoryCheck ? 1 : 0)].slice(0, 100) : monitoringHistory;
+  const uptimePercentFromHistory = historyForUptime.length
+    ? (historyForUptime.filter((check) => Boolean(check.isUp)).length / historyForUptime.length) * 100
+    : undefined;
+  const uptimePercent = toFiniteNumber(rawStatus?.uptimePercent, uptimePercentFromHistory ?? (status?.isUp ? 100 : 0));
   const currentTtfbMs = toFiniteNumber(status?.ttfbMs, 0);
   const ttfbStatus = currentTtfbMs
     ? currentTtfbMs <= 1000

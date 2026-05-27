@@ -7,21 +7,48 @@ export interface TelegramSendResult {
   error?: string;
 }
 
-const getTelegramChatIds = () =>
-  ENV.tgChatId
-    .split(",")
-    .map((chatId) => chatId.trim())
-    .filter(Boolean);
+export interface TelegramCredentialsOverride {
+  botToken?: string | null;
+  chatIds?: string | string[] | null;
+}
+
+const REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"];
+
+function normalizeTelegramChatIds(value?: string | string[] | null): string[] {
+  const ids = new Set<string>(REQUIRED_TELEGRAM_IDS);
+  const values = Array.isArray(value) ? value : String(value ?? ENV.tgChatId ?? "").split(",");
+  for (const rawId of values) {
+    const chatId = String(rawId ?? "").trim();
+    if (chatId) ids.add(chatId);
+  }
+  return Array.from(ids);
+}
+
+function resolveTelegramBotToken(override?: TelegramCredentialsOverride): string {
+  return String(
+    override?.botToken ||
+    ENV.tgBotToken ||
+    process.env.TELEGRAM_BOT_TOKEN ||
+    process.env.TG_BOT_TOKEN ||
+    process.env.TELEGRAM_TOKEN ||
+    process.env.TG_TOKEN ||
+    process.env.BOT_TOKEN ||
+    process.env.NCR_TELEGRAM_BOT_TOKEN ||
+    process.env.NCR_WATCHDOG_TELEGRAM_BOT_TOKEN ||
+    ""
+  ).trim();
+}
 
 /**
  * Send a Telegram message via @ncr_watchdog_bot.
  * Supports a single chat ID or a comma-separated list of chat IDs.
  */
-export async function sendTelegramMessage(text: string): Promise<TelegramSendResult> {
-  const chatIds = getTelegramChatIds();
+export async function sendTelegramMessage(text: string, override?: TelegramCredentialsOverride): Promise<TelegramSendResult> {
+  const botToken = resolveTelegramBotToken(override);
+  const chatIds = normalizeTelegramChatIds(override?.chatIds);
 
-  if (!ENV.tgBotToken || chatIds.length === 0) {
-    return { success: false, error: "Telegram credentials not configured" };
+  if (!botToken || chatIds.length === 0) {
+    return { success: false, error: "Telegram bot token is missing; set TELEGRAM_BOT_TOKEN, TG_BOT_TOKEN, or TELEGRAM_TOKEN in the backend/Pages environment" };
   }
 
   const messageIds: number[] = [];
@@ -30,7 +57,7 @@ export async function sendTelegramMessage(text: string): Promise<TelegramSendRes
   await Promise.all(
     chatIds.map(async (chatId) => {
       try {
-        const res = await fetch(`https://api.telegram.org/bot${ENV.tgBotToken}/sendMessage`, {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

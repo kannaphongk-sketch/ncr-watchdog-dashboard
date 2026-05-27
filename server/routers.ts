@@ -7,10 +7,28 @@ import { checkSite } from "./monitoring";
 import { purgeCFCache, getCFAnalytics, get404Stats } from "./cloudflare";
 import { getCFSecurityLevel } from "./intelligence";
 import { sendTelegramMessage, buildDailyReport } from "./telegram";
-import { getRecentChecks, getUptimePercent, getAvgTtfb, getRecentAlerts, getSchedulerStates, resolveAlertPurge, getTopBrokenLinks, markBrokenLinkFixed, upsertBrokenLinks, CRITICAL_URLS, isInCooldown, setCooldown, getActiveBrokenLinksCount, saveCacheDiagnostic, getLatestCacheDiagnostic, getRecentCacheDiagnostics, getAllReplyTemplates, createReplyTemplate, updateReplyTemplate, deleteReplyTemplate, getAllToxicKeywords, createToxicKeyword, updateToxicKeyword, deleteToxicKeyword, upsertPersonalAgenda, getPersonalAgenda, getRecentAgendas } from "./db";
+import { getRecentChecks, getUptimePercent, getAvgTtfb, getRecentAlerts, getSchedulerStates, resolveAlertPurge, getTopBrokenLinks, markBrokenLinkFixed, upsertBrokenLinks, CRITICAL_URLS, isInCooldown, setCooldown, getActiveBrokenLinksCount, saveCacheDiagnostic, getLatestCacheDiagnostic, getRecentCacheDiagnostics, getAllReplyTemplates, createReplyTemplate, updateReplyTemplate, deleteReplyTemplate, getAllToxicKeywords, createToxicKeyword, updateToxicKeyword, deleteToxicKeyword, upsertPersonalAgenda, getPersonalAgenda, getRecentAgendas, saveMonitorCheck } from "./db";
 import { analyzeCacheDiagnostic } from "./cacheDiagnostic";
 import { getScheduleInfos, getCurrentBangkokTime } from "./scheduler";
 import { runMonitorCycle } from "./autofix";
+
+function readHeaderValue(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value.find(Boolean)?.trim() ?? "" : String(value ?? "").trim();
+}
+
+function getTelegramCredentialOverrides(req: { headers: Record<string, string | string[] | undefined> }) {
+  return {
+    botToken: readHeaderValue(req.headers["x-ncr-telegram-bot-token"]),
+    chatIds: readHeaderValue(req.headers["x-ncr-telegram-chat-ids"]),
+  };
+}
+
+function calculateRealtimeUptimePercent(history: Array<{ isUp: boolean }>, currentIsUp: boolean): number {
+  const checks = [{ isUp: currentIsUp }, ...history].slice(0, 100);
+  if (checks.length === 0) return currentIsUp ? 100 : 0;
+  const upCount = checks.filter((check) => Boolean(check.isUp)).length;
+  return (upCount / checks.length) * 100;
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -72,9 +90,17 @@ export const appRouter = router({
 
     quickStatus: publicProcedure.query(async () => {
       const check = await checkSite();
-      const uptimePercent = await getUptimePercent();
+      await saveMonitorCheck({
+        httpCode: check.httpCode,
+        ttfbMs: check.ttfbMs,
+        cacheStatus: check.cacheStatus,
+        cfRay: check.cfRay,
+        isUp: check.isUp,
+      });
+      const recentChecks = await getRecentChecks(100);
+      const uptimePercent = calculateRealtimeUptimePercent(recentChecks.slice(1), check.isUp);
       const avgTtfbMs = await getAvgTtfb();
-      return { ...check, uptimePercent, avgTtfbMs };
+      return { ...check, uptimePercent, avgTtfbMs, checkedAt: new Date().toISOString() };
     }),
 
     history: publicProcedure.query(async () => {
@@ -101,7 +127,8 @@ export const appRouter = router({
       return { ...cf, top404Urls: cf.top404Urls };
     }),
 
-    sendTestReport: publicProcedure.mutation(async () => {
+    sendTestReport: publicProcedure.mutation(async ({ ctx }) => {
+      const telegramOverrides = getTelegramCredentialOverrides(ctx.req);
       const checks = await getRecentChecks(1);
       const latestCheck = checks[0];
       const uptimePercent = await getUptimePercent();
@@ -129,7 +156,7 @@ export const appRouter = router({
       };
 
       const msg = buildDailyReport("morning", reportData);
-      const result = await sendTelegramMessage(msg);
+      const result = await sendTelegramMessage(msg, telegramOverrides);
       return { success: result.success, messageId: result.messageId, error: result.error };
     }),
 
