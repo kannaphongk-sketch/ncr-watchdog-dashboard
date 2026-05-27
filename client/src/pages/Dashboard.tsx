@@ -385,9 +385,9 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            {status && <StatusBadge isUp={status.isUp} httpCode={status.httpCode} />}
-            <span className="hidden sm:block text-xs text-muted-foreground font-mono">
-              {scheduler?.currentBangkokTime}
+            <StatusBadge isUp={status?.isUp ?? false} httpCode={status?.httpCode ?? 0} />
+            <span className="text-xs text-muted-foreground font-mono">
+              {scheduler?.currentBangkokTime ?? "Loading BKK time…"}
             </span>
             <a
               href="/settings"
@@ -504,7 +504,7 @@ export default function Dashboard() {
                   }`}>
                     {wpSentinelQuery.data.healthAlert ? '⚠️' : '✅'} {normalizeSentinelHealthLabel(wpSentinelQuery.data.wpHealth)}
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium border bg-primary/10 border-primary/20 text-primary/80 hidden sm:inline-flex">
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium border bg-primary/10 border-primary/20 text-primary/80 inline-flex">
                     {normalizeSentinelModeLabel(wpSentinelQuery.data.operatingMode, wpSentinelQuery.data.wpStatus)}
                   </span>
                 </>
@@ -743,20 +743,24 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* 404 Alert — only shown if count > 0 */}
-                {has404 && (
-                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium uppercase tracking-wider text-red-400">Verified 404 Detected</span>
-                      <AlertCircle className="w-4 h-4 text-red-400" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-3xl font-bold text-red-400">{count404}</span>
-                      <span className="text-xs text-red-400/70">broken links in last hour</span>
-                    </div>
-                    <span className="text-xs text-red-400/60">Check Telegram for URL details</span>
+                {/* 404 Status — always visible so the current count is never hidden */}
+                <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
+                  has404 ? 'border-red-500/30 bg-red-500/10' : 'border-emerald-500/20 bg-emerald-500/5'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-medium uppercase tracking-wider ${has404 ? 'text-red-400' : 'text-emerald-400/70'}`}>
+                      Verified 404 Count
+                    </span>
+                    {has404 ? <AlertCircle className="w-4 h-4 text-red-400" /> : <CheckCircle className="w-4 h-4 text-emerald-400/70" />}
                   </div>
-                )}
+                  <div className="flex items-center gap-2">
+                    <span className={`font-mono text-3xl font-bold ${has404 ? 'text-red-400' : 'text-emerald-400'}`}>{count404}</span>
+                    <span className={`text-xs ${has404 ? 'text-red-400/70' : 'text-emerald-400/60'}`}>verified broken links in the last hour</span>
+                  </div>
+                  <span className={`text-xs ${has404 ? 'text-red-400/60' : 'text-emerald-400/50'}`}>
+                    {has404 ? 'Check Telegram for URL details' : 'No broken links detected this hour'}
+                  </span>
+                </div>
 
                 {/* Cache Status (Anti-Ghost) */}
                 <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
@@ -782,19 +786,6 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* 404 Clean Status — shown when no 404s */}
-                {!has404 && (
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium uppercase tracking-wider text-emerald-400/70">404 Status</span>
-                      <CheckCircle className="w-4 h-4 text-emerald-400/70" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-3xl font-bold text-emerald-400">OPTIMIZED</span>
-                    </div>
-                    <span className="text-xs text-emerald-400/50">No broken links detected this hour</span>
-                  </div>
-                )}
               </div>
             );
           })()}

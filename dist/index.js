@@ -5591,7 +5591,7 @@ ${varianceIcon} <b>TTFB Stability (${ttfbVariance.samples} checks):</b>
   }
   msg += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
 `;
-  msg += `\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev"}">\u0E14\u0E39 Dashboard</a>`;
+  msg += `\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://ncr-watchdog-dashboard.pages.dev/"}">\u0E14\u0E39 Dashboard</a>`;
   await sendTelegramMessage(msg);
   await upsertSchedulerState("executive-brief", { lastRunAt: /* @__PURE__ */ new Date(), lastStatus: "ok" });
 }
@@ -5768,7 +5768,7 @@ async function handleKeepalive(req, res) {
         const msg = `${alertType} <b>[NCR Zero Ghosting] \u0E15\u0E23\u0E27\u0E08\u0E1E\u0E1A ${alertLabel}!</b>
 HTTP: ${siteResult.httpCode} | TTFB: <b>${siteResult.ttfbMs}ms</b>${isHighLatency ? " (\u0E40\u0E01\u0E34\u0E19 3,000ms)" : ""}
 \u{1F550} ${(/* @__PURE__ */ new Date()).toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok" })}
-\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev"}">\u0E14\u0E39 Dashboard</a>`;
+\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://ncr-watchdog-dashboard.pages.dev/"}">\u0E14\u0E39 Dashboard</a>`;
         await sendTelegramMessage(msg);
         await setCooldown("keepalive-alert", isDown ? 120 : 240);
       }
@@ -5781,7 +5781,7 @@ HTTP: ${siteResult.httpCode} | TTFB: <b>${siteResult.ttfbMs}ms</b>${isHighLatenc
 Min: ${variance.minTtfb}ms | Max: ${variance.maxTtfb}ms | Avg: ${variance.avgTtfb}ms
 \u{1F4CA} \u0E08\u0E32\u0E01 ${variance.samples} \u0E01\u0E32\u0E23\u0E15\u0E23\u0E27\u0E08\u0E2A\u0E2D\u0E1A\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14
 \u26A0\uFE0F \u0E2D\u0E32\u0E08\u0E40\u0E01\u0E34\u0E14\u0E08\u0E32\u0E01 Cache MISS \u0E2B\u0E23\u0E37\u0E2D Origin Server \u0E42\u0E2B\u0E25\u0E14\u0E2A\u0E39\u0E07
-\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev"}">\u0E14\u0E39 Dashboard</a>`;
+\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://ncr-watchdog-dashboard.pages.dev/"}">\u0E14\u0E39 Dashboard</a>`;
         await sendTelegramMessage(msg);
         await setCooldown("keepalive-variance-alert", 360);
       }
@@ -5799,7 +5799,7 @@ Min: ${variance.minTtfb}ms | Max: ${variance.maxTtfb}ms | Avg: ${variance.avgTtf
         const highLoadMsg = `\u{1F534} <b>High Load Detected</b> \u2014 WP DB Latency: <b>${wpDb.latencyMs}ms</b>
 \u{1F4CA} Status: ${wpDb.isCritical ? "CRITICAL (>1000ms)" : "SLOW (>500ms)"}
 \u{1F4A1} \u0E41\u0E19\u0E30\u0E19\u0E33: Purge CF Cache \u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E25\u0E14 Origin Load
-\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev/"}">Dashboard \u2192 Purge Cache</a>`;
+\u{1F517} <a href="${process.env.DASHBOARD_URL || "https://ncr-watchdog-dashboard.pages.dev/"}">Dashboard \u2192 Purge Cache</a>`;
         await sendTelegramMessage(highLoadMsg);
         await setCooldown(cooldownKey, cooldownMinutes);
       }
@@ -5831,7 +5831,7 @@ async function handleWeeklyQualityAudit(req, res) {
     for (const issue of issues) {
       await upsertQualityAuditResult2(issue);
     }
-    const dashboardUrl = process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev";
+    const dashboardUrl = process.env.DASHBOARD_URL || "https://ncr-watchdog-dashboard.pages.dev/";
     const msg = buildQualityAuditReport2(issues, dashboardUrl);
     const result = await sendTelegramMessage(msg);
     await upsertSchedulerState("weekly-quality-audit", {
@@ -6241,13 +6241,14 @@ async function startServer() {
   const server = createServer(app);
   const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS ?? process.env.FRONTEND_URL ?? "").split(",").map((origin) => origin.trim().replace(/\/$/, "")).filter(Boolean);
   const allowedOrigins = /* @__PURE__ */ new Set([
+    "https://ncr-watchdog-dashboard.pages.dev",
     "https://29bfa18a.ncr-dashboard.pages.dev",
     "https://ncr-dashboard.pages.dev",
     ...configuredAllowedOrigins
   ]);
   app.use((req, res, next) => {
     const origin = req.headers.origin?.replace(/\/$/, "");
-    const isAllowedOrigin = !origin || allowedOrigins.has(origin) || /^https:\/\/[a-z0-9-]+\.ncr-dashboard\.pages\.dev$/i.test(origin) || /^https:\/\/3000-[a-z0-9-]+\.[a-z0-9-]+\.manus\.computer$/i.test(origin);
+    const isAllowedOrigin = !origin || allowedOrigins.has(origin) || /^https:\/\/[a-z0-9-]+\.ncr-watchdog-dashboard\.pages\.dev$/i.test(origin) || /^https:\/\/[a-z0-9-]+\.ncr-dashboard\.pages\.dev$/i.test(origin);
     if (origin && isAllowedOrigin) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header("Vary", "Origin");
