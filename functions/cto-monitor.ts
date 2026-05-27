@@ -75,7 +75,7 @@ async function sendTelegram(env: CloudflareFunctionEnv, text: string): Promise<n
 async function probeTarget(env: CloudflareFunctionEnv): Promise<Omit<MonitorResult, "telegramRecipients" | "telegramDelivered">> {
   const targetUrl = env.CTO_MONITOR_TARGET_URL || DEFAULT_TARGET_URL;
   const timeoutMs = numericEnv(env.CTO_MONITOR_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
-  const thresholdMs = numericEnv(env.CTO_MONITOR_LATENCY_THRESHOLD_MS, DEFAULT_LATENCY_THRESHOLD_MS);
+  const thresholdMs = numericEnv(env.CTO_MONITOR_TTFB_THRESHOLD_MS || env.CTO_MONITOR_LATENCY_THRESHOLD_MS, DEFAULT_LATENCY_THRESHOLD_MS);
   const checkedAt = new Date().toISOString();
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), timeoutMs);

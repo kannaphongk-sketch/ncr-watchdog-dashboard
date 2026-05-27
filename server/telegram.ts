@@ -12,7 +12,7 @@ export interface TelegramCredentialsOverride {
   chatIds?: string | string[] | null;
 }
 
-const REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"];
+const REQUIRED_TELEGRAM_IDS = ["8741681815"];
 
 function splitTelegramChatIds(value?: string | string[] | null): string[] {
   const rawValues = Array.isArray(value) ? value : [value ?? ENV.tgChatId ?? ""];
@@ -24,11 +24,9 @@ function splitTelegramChatIds(value?: string | string[] | null): string[] {
 }
 
 function normalizeTelegramChatIds(value?: string | string[] | null): string[] {
-  const ids = new Set<string>(REQUIRED_TELEGRAM_IDS);
-  for (const chatId of splitTelegramChatIds(value)) {
-    ids.add(chatId);
-  }
-  return Array.from(ids);
+  const activeIds = new Set(REQUIRED_TELEGRAM_IDS);
+  const filteredIds = splitTelegramChatIds(value).filter((chatId) => activeIds.has(chatId));
+  return Array.from(new Set(filteredIds.length ? filteredIds : REQUIRED_TELEGRAM_IDS));
 }
 
 function resolveTelegramBotToken(override?: TelegramCredentialsOverride): string {

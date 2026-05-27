@@ -1,5 +1,4 @@
-const REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"];
-const EXACT_TELEGRAM_IDS = REQUIRED_TELEGRAM_IDS.join(",");
+const DEFAULT_TELEGRAM_CHAT_IDS = ["8741681815"] as const;
 
 function firstNonEmptyEnv(...names: string[]): string {
   for (const name of names) {
@@ -10,13 +9,12 @@ function firstNonEmptyEnv(...names: string[]): string {
 }
 
 function normalizeTelegramIds(value?: string): string {
-  const ids = new Set<string>();
-  for (const requiredId of REQUIRED_TELEGRAM_IDS) ids.add(requiredId);
-  for (const rawId of (value || "").split(",")) {
-    const chatId = rawId.trim();
-    if (chatId) ids.add(chatId);
-  }
-  return Array.from(ids).join(",");
+  const activeIds = new Set(DEFAULT_TELEGRAM_CHAT_IDS);
+  const filteredIds = (value || DEFAULT_TELEGRAM_CHAT_IDS.join(","))
+    .split(",")
+    .map((rawId) => rawId.trim())
+    .filter((chatId): chatId is (typeof DEFAULT_TELEGRAM_CHAT_IDS)[number] => activeIds.has(chatId as (typeof DEFAULT_TELEGRAM_CHAT_IDS)[number]));
+  return Array.from(new Set(filteredIds.length ? filteredIds : DEFAULT_TELEGRAM_CHAT_IDS)).join(",");
 }
 
 export const ENV = {
@@ -31,8 +29,29 @@ export const ENV = {
     "NCR_TELEGRAM_BOT_TOKEN",
     "NCR_WATCHDOG_TELEGRAM_BOT_TOKEN"
   ),
-  tgChatId: normalizeTelegramIds(firstNonEmptyEnv("TELEGRAM_CHAT_IDS", "TELEGRAM_CHAT_ID", "TG_CHAT_IDS", "TG_CHAT_ID", "TELEGRAM_RECIPIENT_IDS")),
-  tgAuthorizedChatIds: normalizeTelegramIds(firstNonEmptyEnv("TELEGRAM_AUTHORIZED_CHAT_IDS", "TG_AUTHORIZED_CHAT_IDS", "TELEGRAM_CHAT_IDS", "TELEGRAM_CHAT_ID")),
+  tgChatId: normalizeTelegramIds(
+    firstNonEmptyEnv(
+      "NCR_TELEGRAM_CHAT_IDS",
+      "NCR_TELEGRAM_CHAT_ID",
+      "TELEGRAM_CHAT_ID",
+      "TELEGRAM_CHAT_IDS",
+      "TG_CHAT_IDS",
+      "TG_CHAT_ID",
+      "TELEGRAM_RECIPIENT_IDS"
+    )
+  ),
+  tgAuthorizedChatIds: normalizeTelegramIds(
+    firstNonEmptyEnv(
+      "NCR_TELEGRAM_AUTHORIZED_CHAT_IDS",
+      "NCR_TELEGRAM_AUTHORIZED_CHAT_ID",
+      "TELEGRAM_AUTHORIZED_CHAT_IDS",
+      "TG_AUTHORIZED_CHAT_IDS",
+      "NCR_TELEGRAM_CHAT_IDS",
+      "NCR_TELEGRAM_CHAT_ID",
+      "TELEGRAM_CHAT_ID",
+      "TELEGRAM_CHAT_IDS"
+    )
+  ),
   dashboardUrl: process.env.DASHBOARD_URL ?? process.env.FRONTEND_URL ?? "https://29bfa18a.ncr-dashboard.pages.dev",
   targetSite: "https://nakornchiangrainews.com",
   ttfbThresholdMs: 500,

@@ -383,7 +383,7 @@ export default function Dashboard() {
   const cf = cfQuery.data;
   const telegramConfig = telegramConfigQuery.data;
   const telegramConfigured = Boolean(telegramConfig?.configured);
-  const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : ["8855631169", "8674647124", "8216202664"];
+  const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : ["8741681815"];
   const scheduler = schedulerQuery.data;
   const alerts = alertsQuery.data ?? [];
   const rollingTtfbChecks = history.slice(0, 20);

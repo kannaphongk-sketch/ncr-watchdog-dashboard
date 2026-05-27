@@ -5,6 +5,7 @@ export interface CloudflareFunctionEnv {
   ALLOWED_ORIGINS?: string;
   CTO_MONITOR_TARGET_URL?: string;
   CTO_MONITOR_LATENCY_THRESHOLD_MS?: string;
+  CTO_MONITOR_TTFB_THRESHOLD_MS?: string;
   CTO_MONITOR_TIMEOUT_MS?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TG_BOT_TOKEN?: string;
@@ -13,6 +14,8 @@ export interface CloudflareFunctionEnv {
   BOT_TOKEN?: string;
   NCR_TELEGRAM_BOT_TOKEN?: string;
   NCR_WATCHDOG_TELEGRAM_BOT_TOKEN?: string;
+  NCR_TELEGRAM_CHAT_ID?: string;
+  NCR_TELEGRAM_CHAT_IDS?: string;
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_CHAT_IDS?: string;
   TELEGRAM_AUTHORIZED_CHAT_IDS?: string;
@@ -21,7 +24,7 @@ export interface CloudflareFunctionEnv {
 }
 
 export const DEFAULT_BACKEND_ORIGIN = "http://35.196.168.113:3000";
-export const REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"] as const;
+export const DEFAULT_TELEGRAM_CHAT_IDS = ["8741681815"] as const;
 
 export const noStoreHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -44,14 +47,18 @@ export function splitCommaSeparated(value?: string): string[] {
 
 export function normalizeTelegramChatIds(env: CloudflareFunctionEnv): string[] {
   const raw = firstPresent(
-    env.TELEGRAM_CHAT_IDS,
+    env.NCR_TELEGRAM_CHAT_IDS,
+    env.NCR_TELEGRAM_CHAT_ID,
     env.TELEGRAM_CHAT_ID,
+    env.TELEGRAM_CHAT_IDS,
     env.TELEGRAM_AUTHORIZED_CHAT_IDS,
     env.TG_CHAT_IDS,
     env.TG_CHAT_ID,
-    REQUIRED_TELEGRAM_IDS.join(",")
+    DEFAULT_TELEGRAM_CHAT_IDS.join(",")
   );
-  return Array.from(new Set([...REQUIRED_TELEGRAM_IDS, ...splitCommaSeparated(raw)]));
+  const activeIds = new Set(DEFAULT_TELEGRAM_CHAT_IDS);
+  const filteredIds = splitCommaSeparated(raw).filter(chatId => activeIds.has(chatId as (typeof DEFAULT_TELEGRAM_CHAT_IDS)[number]));
+  return Array.from(new Set(filteredIds.length ? filteredIds : DEFAULT_TELEGRAM_CHAT_IDS));
 }
 
 export function getTelegramBotToken(env: CloudflareFunctionEnv): string {
