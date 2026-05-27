@@ -51,6 +51,8 @@ const normalizeApiBaseUrl = (value: unknown): string => {
     const base = typeof window !== "undefined" ? window.location.origin : "https://ncr-watchdog-dashboard.pages.dev";
     const url = new URL(rawValue, base);
     if (!["http:", "https:"].includes(url.protocol)) return DEFAULT_API_BASE_URL;
+    const currentProtocol = typeof window !== "undefined" ? window.location.protocol : "https:";
+    if (currentProtocol === "https:" && url.protocol === "http:") return DEFAULT_API_BASE_URL;
     return url.origin === base ? DEFAULT_API_BASE_URL : url.href.replace(/\/$/, "");
   } catch (error) {
     console.warn("[api] Invalid VITE_API_BASE_URL; falling back to same-origin /api.", error);
@@ -69,11 +71,18 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: trpcUrl,
       transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
+      async fetch(input, init) {
+        const headers = new Headers(init?.headers);
+        headers.set("Accept", "application/json");
+        if (!headers.has("Content-Type") && init?.body) headers.set("Content-Type", "application/json");
+        const response = await globalThis.fetch(input, {
           ...(init ?? {}),
+          headers,
+          mode: isCrossOriginApi ? "cors" : "same-origin",
           credentials: isCrossOriginApi ? "omit" : "include",
         });
+
+        return response;
       },
     }),
   ],

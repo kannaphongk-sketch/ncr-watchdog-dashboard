@@ -6,7 +6,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { checkSite } from "./monitoring";
 import { purgeCFCache, getCFAnalytics, get404Stats } from "./cloudflare";
 import { getCFSecurityLevel } from "./intelligence";
-import { sendTelegramMessage, buildDailyReport } from "./telegram";
+import { sendTelegramMessage, buildDailyReport, getTelegramConfigurationStatus } from "./telegram";
 import { getRecentChecks, getUptimePercent, getAvgTtfb, getRecentAlerts, getSchedulerStates, resolveAlertPurge, getTopBrokenLinks, markBrokenLinkFixed, upsertBrokenLinks, CRITICAL_URLS, isInCooldown, setCooldown, getActiveBrokenLinksCount, saveCacheDiagnostic, getLatestCacheDiagnostic, getRecentCacheDiagnostics, getAllReplyTemplates, createReplyTemplate, updateReplyTemplate, deleteReplyTemplate, getAllToxicKeywords, createToxicKeyword, updateToxicKeyword, deleteToxicKeyword, upsertPersonalAgenda, getPersonalAgenda, getRecentAgendas, saveMonitorCheck } from "./db";
 import { analyzeCacheDiagnostic } from "./cacheDiagnostic";
 import { getScheduleInfos, getCurrentBangkokTime } from "./scheduler";
@@ -125,6 +125,11 @@ export const appRouter = router({
       const [cf, stats404] = await Promise.all([getCFAnalytics(), get404Stats()]);
       // Merge: CF count404 as primary, top404Urls from CF (already included in cf object)
       return { ...cf, top404Urls: cf.top404Urls };
+    }),
+
+    telegramConfig: publicProcedure.query(({ ctx }) => {
+      const telegramOverrides = getTelegramCredentialOverrides(ctx.req);
+      return getTelegramConfigurationStatus(telegramOverrides);
     }),
 
     sendTestReport: publicProcedure.mutation(async ({ ctx }) => {

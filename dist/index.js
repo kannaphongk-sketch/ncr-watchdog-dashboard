@@ -1740,6 +1740,7 @@ __export(telegram_exports, {
   buildTopPostsReport: () => buildTopPostsReport,
   buildWeeklyReport: () => buildWeeklyReport,
   buildWpDbLatencyAlert: () => buildWpDbLatencyAlert,
+  getTelegramConfigurationStatus: () => getTelegramConfigurationStatus,
   sendTelegramMessage: () => sendTelegramMessage
 });
 function normalizeTelegramChatIds(value) {
@@ -1755,6 +1756,21 @@ function resolveTelegramBotToken(override) {
   return String(
     override?.botToken || ENV.tgBotToken || process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN || process.env.TELEGRAM_TOKEN || process.env.TG_TOKEN || process.env.BOT_TOKEN || process.env.NCR_TELEGRAM_BOT_TOKEN || process.env.NCR_WATCHDOG_TELEGRAM_BOT_TOKEN || ""
   ).trim();
+}
+function getTelegramConfigurationStatus(override) {
+  const botToken = resolveTelegramBotToken(override);
+  const chatIds = normalizeTelegramChatIds(override?.chatIds);
+  const missingRequiredChatIds = REQUIRED_TELEGRAM_IDS2.filter((id) => !chatIds.includes(id));
+  return {
+    configured: Boolean(botToken) && missingRequiredChatIds.length === 0,
+    botConfigured: Boolean(botToken),
+    chatIds,
+    requiredChatIds: REQUIRED_TELEGRAM_IDS2,
+    missingRequiredChatIds,
+    recipientCount: chatIds.length,
+    botName: "@ncr_watchdog_bot",
+    source: override?.botToken ? "proxy-header" : "backend-env"
+  };
 }
 async function sendTelegramMessage(text2, override) {
   const botToken = resolveTelegramBotToken(override);
@@ -4912,6 +4928,10 @@ var appRouter = router({
     cfAnalytics: publicProcedure.query(async () => {
       const [cf, stats404] = await Promise.all([getCFAnalytics(), get404Stats()]);
       return { ...cf, top404Urls: cf.top404Urls };
+    }),
+    telegramConfig: publicProcedure.query(({ ctx }) => {
+      const telegramOverrides = getTelegramCredentialOverrides(ctx.req);
+      return getTelegramConfigurationStatus(telegramOverrides);
     }),
     sendTestReport: publicProcedure.mutation(async ({ ctx }) => {
       const telegramOverrides = getTelegramCredentialOverrides(ctx.req);

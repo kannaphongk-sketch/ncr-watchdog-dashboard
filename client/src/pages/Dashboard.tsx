@@ -258,6 +258,11 @@ export default function Dashboard() {
     refetchInterval: 300_000,
   });
 
+  const telegramConfigQuery = trpc.monitor.telegramConfig.useQuery(undefined, {
+    refetchInterval: 300_000,
+    retry: 1,
+  });
+
   const [sentinelRefreshKey, setSentinelRefreshKey] = useState(0);
   const wpSentinelQuery = trpc.wpSentinel.getV6Data.useQuery(undefined, {
     refetchInterval: 900_000, // 15-minute polling (V12.1 Credit-Saving Mode); manual refresh via button
@@ -343,6 +348,7 @@ export default function Dashboard() {
     try {
       const result = await sendTestReportMutation.mutateAsync();
       if (result.success) {
+        await utils.monitor.telegramConfig.invalidate();
         toast.success(`Test report sent via @ncr_watchdog_bot (ID: ${result.messageId})`);
       } else {
         toast.error(`Report failed: ${result.error}`);
@@ -375,6 +381,9 @@ export default function Dashboard() {
       }
     : undefined;
   const cf = cfQuery.data;
+  const telegramConfig = telegramConfigQuery.data;
+  const telegramConfigured = Boolean(telegramConfig?.configured);
+  const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : ["8855631169", "8674647124", "8216202664"];
   const scheduler = schedulerQuery.data;
   const alerts = alertsQuery.data ?? [];
   const rollingTtfbChecks = history.slice(0, 20);
@@ -473,13 +482,31 @@ export default function Dashboard() {
           </Button>
           <Button
             onClick={handleSendTestReport}
-            disabled={isSendingReport}
+            disabled={isSendingReport || telegramConfigQuery.isError}
             variant="outline"
             className="gap-2 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
           >
             <Send className={`w-4 h-4 ${isSendingReport ? "animate-pulse" : ""}`} />
             Send Test Report
           </Button>
+        </div>
+
+        <div className={`rounded-xl border px-4 py-3 text-sm ${telegramConfigured ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" : "border-amber-500/25 bg-amber-500/10 text-amber-300"}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            {telegramConfigured ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span className="font-medium">
+              Telegram {telegramConfigured ? "connected" : telegramConfigQuery.isLoading ? "checking configuration" : "configuration pending"}
+            </span>
+            <span className="text-muted-foreground">
+              @ncr_watchdog_bot recipients: {telegramRecipients.join(", ")}
+            </span>
+          </div>
+          {telegramConfigQuery.isError && (
+            <p className="mt-1 text-xs text-red-300">Telegram status could not be fetched from the backend proxy; report sending is paused until the API responds.</p>
+          )}
+          {telegramConfig && !telegramConfig.botConfigured && (
+            <p className="mt-1 text-xs">Bot token is not visible to the frontend and must be configured in the backend or Pages environment.</p>
+          )}
         </div>
 
         {/* ─── Overview Metric Cards ────────────────────────────────────── */}

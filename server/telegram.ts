@@ -39,6 +39,24 @@ function resolveTelegramBotToken(override?: TelegramCredentialsOverride): string
   ).trim();
 }
 
+
+export function getTelegramConfigurationStatus(override?: TelegramCredentialsOverride) {
+  const botToken = resolveTelegramBotToken(override);
+  const chatIds = normalizeTelegramChatIds(override?.chatIds);
+  const missingRequiredChatIds = REQUIRED_TELEGRAM_IDS.filter((id) => !chatIds.includes(id));
+
+  return {
+    configured: Boolean(botToken) && missingRequiredChatIds.length === 0,
+    botConfigured: Boolean(botToken),
+    chatIds,
+    requiredChatIds: REQUIRED_TELEGRAM_IDS,
+    missingRequiredChatIds,
+    recipientCount: chatIds.length,
+    botName: "@ncr_watchdog_bot",
+    source: override?.botToken ? "proxy-header" : "backend-env",
+  } as const;
+}
+
 /**
  * Send a Telegram message via @ncr_watchdog_bot.
  * Supports a single chat ID or a comma-separated list of chat IDs.
