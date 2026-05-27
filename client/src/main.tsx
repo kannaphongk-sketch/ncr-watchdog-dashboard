@@ -37,8 +37,10 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
-const DEFAULT_API_BASE_URL = "https://3000-isieb5gntt2dvgdql65hu-b3c9546d.sg1.manus.computer";
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
+const DEFAULT_API_BASE_URL = "";
+const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).trim().replace(/\/$/, "");
+const isStaleTemporaryApiUrl = /manus|nkcr-watchdog-dashboard-center\.kannaphong-k\.workers\.dev/i.test(rawApiBaseUrl);
+const apiBaseUrl = isStaleTemporaryApiUrl ? DEFAULT_API_BASE_URL : rawApiBaseUrl;
 const trpcUrl = apiBaseUrl ? `${apiBaseUrl}/api/trpc` : "/api/trpc";
 const isCrossOriginApi = apiBaseUrl && typeof window !== "undefined" && new URL(apiBaseUrl).origin !== window.location.origin;
 

@@ -62,6 +62,7 @@ async function startServer() {
     .filter(Boolean);
 
   const allowedOrigins = new Set<string>([
+    "https://ncr-watchdog-dashboard.pages.dev",
     "https://29bfa18a.ncr-dashboard.pages.dev",
     "https://ncr-dashboard.pages.dev",
     ...configuredAllowedOrigins,
@@ -72,8 +73,8 @@ async function startServer() {
     const isAllowedOrigin =
       !origin ||
       allowedOrigins.has(origin) ||
-      /^https:\/\/[a-z0-9-]+\.ncr-dashboard\.pages\.dev$/i.test(origin) ||
-      /^https:\/\/3000-[a-z0-9-]+\.[a-z0-9-]+\.manus\.computer$/i.test(origin);
+      /^https:\/\/[a-z0-9-]+\.ncr-watchdog-dashboard\.pages\.dev$/i.test(origin) ||
+      /^https:\/\/[a-z0-9-]+\.ncr-dashboard\.pages\.dev$/i.test(origin);
 
     if (origin && isAllowedOrigin) {
       res.header("Access-Control-Allow-Origin", origin);
