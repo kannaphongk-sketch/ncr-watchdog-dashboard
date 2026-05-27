@@ -2,9 +2,6 @@ name = "ncr-watchdog-dashboard"
 compatibility_date = "2026-05-27"
 pages_build_output_dir = "dist/public"
 
-[triggers]
-crons = ["*/5 * * * *"]
-
 [vars]
 FRONTEND_URL = "https://ncr-watchdog-dashboard.pages.dev/"
 DASHBOARD_URL = "https://ncr-watchdog-dashboard.pages.dev/"
