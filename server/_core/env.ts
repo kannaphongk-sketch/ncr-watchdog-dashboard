@@ -1,0 +1,28 @@
+const EXACT_TELEGRAM_IDS = "8855631169,8674647124,8216202664";
+
+export const ENV = {
+  cfApiToken: process.env.CF_API_TOKEN ?? "",
+  cfZoneId: process.env.CF_ZONE_ID ?? "",
+  tgBotToken: process.env.TELEGRAM_BOT_TOKEN ?? process.env.TG_BOT_TOKEN ?? "",
+  tgChatId: EXACT_TELEGRAM_IDS,
+  tgAuthorizedChatIds: EXACT_TELEGRAM_IDS,
+  dashboardUrl: process.env.DASHBOARD_URL ?? "https://ncrwatchdog-evxfoanf.manus.space",
+  targetSite: "https://nakornchiangrainews.com",
+  ttfbThresholdMs: 500,
+  appId: process.env.VITE_APP_ID ?? "",
+  cookieSecret: process.env.JWT_SECRET ?? "",
+  databaseUrl: process.env.DATABASE_URL ?? "",
+  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+  isProduction: process.env.NODE_ENV === "production",
+  wpSiteUrl: process.env.WP_SITE_URL ?? "https://nakornchiangrainews.com",
+  wpSentinelUrl: process.env.WP_SENTINEL_URL ?? "https://nakornchiangrainews.com/wp-json/ncr/v3/monitor",
+  ncrApiSecret: process.env.NCR_API_SECRET ?? "",
+  wpUser: process.env.WP_USER ?? "",
+  wpAppPassword: process.env.WP_APP_PASSWORD ?? "",
+  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
+  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  googleClientEmail: process.env.GOOGLE_CLIENT_EMAIL ?? process.env.GSC_CLIENT_EMAIL ?? "",
+  googlePrivateKey: (process.env.GOOGLE_PRIVATE_KEY ?? process.env.GSC_PRIVATE_KEY ?? "").replace(/\\n/g, "\n"),
+  googleSearchConsoleSiteUrl: process.env.GOOGLE_SEARCH_CONSOLE_SITE_URL ?? process.env.GSC_SITE_URL ?? "https://nakornchiangrainews.com/",
+};
