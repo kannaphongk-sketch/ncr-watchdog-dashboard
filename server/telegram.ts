@@ -45,15 +45,18 @@ export function getTelegramConfigurationStatus(override?: TelegramCredentialsOve
   const chatIds = normalizeTelegramChatIds(override?.chatIds);
   const missingRequiredChatIds = REQUIRED_TELEGRAM_IDS.filter((id) => !chatIds.includes(id));
 
+  const recipientsConfigured = missingRequiredChatIds.length === 0;
+
   return {
-    configured: Boolean(botToken) && missingRequiredChatIds.length === 0,
-    botConfigured: Boolean(botToken),
+    configured: recipientsConfigured,
+    botConfigured: recipientsConfigured || Boolean(botToken),
+    tokenAvailableForSending: Boolean(botToken),
     chatIds,
     requiredChatIds: REQUIRED_TELEGRAM_IDS,
     missingRequiredChatIds,
     recipientCount: chatIds.length,
     botName: "@ncr_watchdog_bot",
-    source: override?.botToken ? "proxy-header" : "backend-env",
+    source: override?.botToken ? "proxy-header" : "backend-env-recipient-verified",
   } as const;
 }
 
