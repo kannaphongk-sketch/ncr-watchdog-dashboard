@@ -1,0 +1,52 @@
+[
+  {
+    "label": "Root page",
+    "url": "https://gorgeous-treacle-ebe178.netlify.app/",
+    "method": "GET",
+    "status": 200,
+    "reason": "OK",
+    "headers": {
+      "cache-control": "public,max-age=0,s-maxage=300,stale-while-revalidate=60,must-revalidate",
+      "age": "0",
+      "etag": "\"461ac575d90f4b7c8e443075fed0cf52-ssl\"",
+      "content-type": "text/html; charset=UTF-8",
+      "x-nf-request-id": "01KSJMBDVASAXZAJWDCNN9G5M8",
+      "server": "Netlify"
+    },
+    "body_sample": "<!doctype html>\n<html lang=\"en\">\n\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta\n      name=\"viewport\"\n      content=\"width=device-width, initial-scale=1.0, maximum-scale=1\" />\n    <title>NCR Watchdo"
+  },
+  {
+    "label": "Hashed JavaScript asset",
+    "url": "https://gorgeous-treacle-ebe178.netlify.app/assets/index-jQgiknog.js",
+    "method": "GET",
+    "status": 200,
+    "reason": "OK",
+    "headers": {
+      "cache-control": "public,max-age=31536000,immutable",
+      "age": "88",
+      "etag": "\"8af318e128eb06767dabb53ca793e6a0-ssl\"",
+      "content-type": "application/javascript; charset=UTF-8",
+      "x-nf-request-id": "01KSJMBGN8D91G2WWSEPEAPM5A",
+      "server": "Netlify"
+    },
+    "body_sample": "function i8(e,t){for(var n=0;n<t.length;n++){const r=t[n];if(typeof r!=\"string\"&&!Array.isArray(r)){for(const i in r)if(i!==\"default\"&&!(i in e)){const s=Object.getOwnPropertyDescriptor(r,i);s&&Object"
+  },
+  {
+    "label": "Dynamic tRPC API",
+    "url": "https://gorgeous-treacle-ebe178.netlify.app/api/trpc/wpSentinel.getV6Data?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D",
+    "method": "GET",
+    "status": 200,
+    "reason": "OK",
+    "headers": {
+      "cache-control": "no-store,no-cache,must-revalidate,max-age=0",
+      "cdn-cache-control": "no-store",
+      "pragma": "no-cache",
+      "expires": "0",
+      "age": "4",
+      "content-type": "application/json",
+      "x-nf-request-id": "01KSJMBK2T7XKFT0J6WQMZDR7H",
+      "server": "Netlify"
+    },
+    "body_sample": "[{\"result\":{\"data\":{\"json\":{\"dbLatencyMs\":0,\"diskFreeGb\":2465.11,\"diskRawValue\":\"2465.11\",\"diskSystemManaged\":false,\"operatingMode\":\"Autonomous Caretaker Active\",\"diskPermissionError\":false,\"dbStatus\""
+  }
+]

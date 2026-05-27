@@ -1,0 +1,53 @@
+## Live header check after Cloudflare cache-rule update
+UTC 2026-05-26T17:36:34Z
+
+### Dashboard frontend root headers
+HTTP/2 200 
+accept-ranges: bytes
+age: 1
+cache-control: public,max-age=0,s-maxage=300,stale-while-revalidate=60,must-revalidate
+cache-status: "Netlify Edge"; fwd=miss
+content-type: text/html; charset=UTF-8
+date: Tue, 26 May 2026 17:36:37 GMT
+etag: "461ac575d90f4b7c8e443075fed0cf52-ssl"
+server: Netlify
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-nf-request-id: 01KSJNR7WWKPFM50AQT80KPT49
+content-length: 367774
+
+
+### Dashboard hashed/assets listing sample from built dist
+
+### Dashboard API headers for live tRPC query
+HTTP/2 200 
+age: 3
+cache-control: no-store,no-cache,must-revalidate,max-age=0
+cache-status: "Netlify Durable"; fwd=bypass
+cache-status: "Netlify Edge"; fwd=miss
+cdn-cache-control: no-store
+content-type: application/json
+date: Tue, 26 May 2026 17:36:43 GMT
+expires: 0
+netlify-vary: query
+pragma: no-cache
+server: Netlify
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+vary: trpc-accept
+x-nf-request-id: 01KSJNRB738EHHTJ2CMCE2KTQH
+
+\n## Live asset URL discovery and header check
+UTC 2026-05-26T17:37:25Z
+asset_url=/assets/index-jQgiknog.js
+HTTP/2 200 
+accept-ranges: bytes
+age: 0
+cache-control: public,max-age=31536000,immutable
+cache-status: "Netlify Edge"; fwd=miss
+content-type: application/javascript; charset=UTF-8
+date: Tue, 26 May 2026 17:37:30 GMT
+etag: "8af318e128eb06767dabb53ca793e6a0-ssl"
+server: Netlify
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-nf-request-id: 01KSJNSWEN2KV090FDNQ3D5K4N
+content-length: 976421
+
