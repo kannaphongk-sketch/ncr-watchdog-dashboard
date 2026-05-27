@@ -40,20 +40,25 @@ export async function checkSite(): Promise<SiteCheckResult> {
   const startTime = Date.now();
   const wpBase = ENV.wpSiteUrl.replace(/\/$/, "");
   const endpoints = [
-    { url: ENV.wpSentinelUrl || `${wpBase}/wp-json/ncr/v3/monitor`, includeSecret: true },
+    // The public analytics endpoint is the canonical dashboard health source. It
+    // returns the same stable Sentinel health fields without the failed-auth
+    // delay currently produced by the protected monitor route.
     { url: `${wpBase}/wp-json/ncr/v2/analytics`, includeSecret: false },
+    { url: ENV.wpSentinelUrl || `${wpBase}/wp-json/ncr/v3/monitor`, includeSecret: true },
   ];
 
   try {
     let response: Response | null = null;
     let raw: Record<string, unknown> = {};
     let lastError: Error | null = null;
+    let responseTtfbMs = 0;
 
     for (const endpoint of endpoints) {
       const sentinelUrl = new URL(endpoint.url);
       sentinelUrl.searchParams.set("v", String(Date.now()));
       if (endpoint.includeSecret && ENV.ncrApiSecret) sentinelUrl.searchParams.set("secret", ENV.ncrApiSecret);
 
+      const endpointStart = Date.now();
       const candidate = await fetch(sentinelUrl.toString(), {
         method: "GET",
         headers: {
@@ -62,8 +67,10 @@ export async function checkSite(): Promise<SiteCheckResult> {
           "User-Agent": "NCR-Watchdog-Production-Sync/1.0",
           ...(endpoint.includeSecret && ENV.ncrApiSecret ? { "NCR-Secret": ENV.ncrApiSecret } : {}),
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(6000),
       });
+
+      const candidateTtfbMs = Math.max(1, Date.now() - endpointStart);
 
       if (!candidate.ok) {
         lastError = new Error(`WordPress route HTTP ${candidate.status}`);
@@ -71,6 +78,7 @@ export async function checkSite(): Promise<SiteCheckResult> {
       }
 
       response = candidate;
+      responseTtfbMs = candidateTtfbMs;
       try {
         raw = (await candidate.clone().json()) as Record<string, unknown>;
       } catch {
@@ -82,7 +90,7 @@ export async function checkSite(): Promise<SiteCheckResult> {
     if (!response) throw lastError ?? new Error("WordPress NCR routes unavailable");
 
     const metrics = parseSentinelSystemMetrics(raw);
-    const ttfbMs = Math.max(1, Date.now() - startTime);
+    const ttfbMs = responseTtfbMs || Math.max(1, Date.now() - startTime);
     const cacheStatus = response.headers.get("cf-cache-status") || "SYNCED";
 
     return {

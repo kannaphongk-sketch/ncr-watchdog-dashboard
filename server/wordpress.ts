@@ -202,8 +202,12 @@ export async function fetchWpSentinelV6(): Promise<WpSentinelV6Data> {
   const fetchedAt = new Date();
   try {
     const endpoints = [
-      { label: "ncr/v3/monitor", url: getWpSentinelUrl(), includeSecret: true },
+      // Prefer the public analytics route for dashboard display; the protected
+      // monitor route can return AUTH_FAILED slowly when WordPress rejects the
+      // configured secret, which caused visible Refreshing states and inflated
+      // TTFB cards even though Sentinel is stable.
       { label: "ncr/v2/analytics", url: getWpAnalyticsUrl(), includeSecret: false },
+      { label: "ncr/v3/monitor", url: getWpSentinelUrl(), includeSecret: true },
     ];
     let raw: Record<string, unknown> | null = null;
     let lastError: Error | null = null;
@@ -220,7 +224,7 @@ export async function fetchWpSentinelV6(): Promise<WpSentinelV6Data> {
           "Cache-Control": "no-cache",
           ...(endpoint.includeSecret && ENV.ncrApiSecret ? { "NCR-Secret": ENV.ncrApiSecret } : {}),
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(6000),
       });
       if (!res.ok) {
         lastError = new Error(`${endpoint.label} HTTP ${res.status}`);

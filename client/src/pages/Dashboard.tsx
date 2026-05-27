@@ -406,7 +406,8 @@ export default function Dashboard() {
 
   const cfTotalRequests = toFiniteNumber(cf?.totalRequests, 0);
   const cfCachedRequests = Math.min(cfTotalRequests, toFiniteNumber(cf?.cachedRequests, 0));
-  const cfCacheHitRate = cfTotalRequests > 0 ? toFiniteNumber(cf?.cacheHitRate, (cfCachedRequests / cfTotalRequests) * 100) : toFiniteNumber(cf?.cacheHitRate, 0);
+  const hasCfAnalyticsData = cfTotalRequests > 0 || cfCachedRequests > 0;
+  const cfCacheHitRate = hasCfAnalyticsData ? toFiniteNumber(cf?.cacheHitRate, (cfCachedRequests / Math.max(1, cfTotalRequests)) * 100) : Number.NaN;
   const cfCount404 = toFiniteNumber(cf?.count404, 0);
   const cfThreats = toFiniteNumber(cf?.threats, 0);
   const cacheChartData = [
@@ -421,9 +422,9 @@ export default function Dashboard() {
   const uptimePercent = toFiniteNumber(rawStatus?.uptimePercent, uptimePercentFromHistory ?? (status?.isUp ? 100 : 0));
   const currentTtfbMs = toFiniteNumber(status?.ttfbMs, 0);
   const ttfbStatus = currentTtfbMs
-    ? currentTtfbMs <= 1000
+    ? currentTtfbMs <= 2500
       ? "green"
-      : currentTtfbMs <= 3000
+      : currentTtfbMs <= 5000
       ? "yellow"
       : "red"
     : "blue";
@@ -525,7 +526,7 @@ export default function Dashboard() {
               icon={Zap}
               label="TTFB"
               value={status ? formatMs(status.ttfbMs) : "—"}
-              sub={`Threshold: 3,000ms`}
+              sub={`Warning: 2,500ms · Critical: 5,000ms`}
               accent={ttfbStatus}
               loading={statusQuery.isLoading}
             />
@@ -541,7 +542,7 @@ export default function Dashboard() {
               icon={BarChart3}
               label="CF Cache Hit"
               value={formatPercent(cfCacheHitRate)}
-              sub="24h average"
+              sub={hasCfAnalyticsData ? "24h average" : "Cloudflare analytics unavailable"}
               accent="blue"
               loading={cfQuery.isLoading}
             />
@@ -550,7 +551,7 @@ export default function Dashboard() {
               label="Avg TTFB"
               value={formatMs(avgTtfb)}
               sub={`Rolling average from ${rollingTtfbChecks.length || 0}/20 checks`}
-              accent={avgTtfb <= 1000 ? "green" : avgTtfb <= 3000 ? "yellow" : "red"}
+              accent={avgTtfb <= 2500 ? "green" : avgTtfb <= 5000 ? "yellow" : "red"}
               loading={statusQuery.isLoading && historyQuery.isLoading}
             />
           </div>

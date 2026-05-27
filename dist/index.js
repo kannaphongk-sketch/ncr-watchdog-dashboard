@@ -2381,8 +2381,12 @@ async function fetchWpSentinelV6() {
   const fetchedAt = /* @__PURE__ */ new Date();
   try {
     const endpoints = [
-      { label: "ncr/v3/monitor", url: getWpSentinelUrl(), includeSecret: true },
-      { label: "ncr/v2/analytics", url: getWpAnalyticsUrl(), includeSecret: false }
+      // Prefer the public analytics route for dashboard display; the protected
+      // monitor route can return AUTH_FAILED slowly when WordPress rejects the
+      // configured secret, which caused visible Refreshing states and inflated
+      // TTFB cards even though Sentinel is stable.
+      { label: "ncr/v2/analytics", url: getWpAnalyticsUrl(), includeSecret: false },
+      { label: "ncr/v3/monitor", url: getWpSentinelUrl(), includeSecret: true }
     ];
     let raw = null;
     let lastError = null;
@@ -2397,7 +2401,7 @@ async function fetchWpSentinelV6() {
           "Cache-Control": "no-cache",
           ...endpoint.includeSecret && ENV.ncrApiSecret ? { "NCR-Secret": ENV.ncrApiSecret } : {}
         },
-        signal: AbortSignal.timeout(15e3)
+        signal: AbortSignal.timeout(6e3)
       });
       if (!res.ok) {
         lastError = new Error(`${endpoint.label} HTTP ${res.status}`);
@@ -4409,17 +4413,22 @@ async function checkSite() {
   const startTime = Date.now();
   const wpBase = ENV.wpSiteUrl.replace(/\/$/, "");
   const endpoints = [
-    { url: ENV.wpSentinelUrl || `${wpBase}/wp-json/ncr/v3/monitor`, includeSecret: true },
-    { url: `${wpBase}/wp-json/ncr/v2/analytics`, includeSecret: false }
+    // The public analytics endpoint is the canonical dashboard health source. It
+    // returns the same stable Sentinel health fields without the failed-auth
+    // delay currently produced by the protected monitor route.
+    { url: `${wpBase}/wp-json/ncr/v2/analytics`, includeSecret: false },
+    { url: ENV.wpSentinelUrl || `${wpBase}/wp-json/ncr/v3/monitor`, includeSecret: true }
   ];
   try {
     let response = null;
     let raw = {};
     let lastError = null;
+    let responseTtfbMs = 0;
     for (const endpoint of endpoints) {
       const sentinelUrl = new URL(endpoint.url);
       sentinelUrl.searchParams.set("v", String(Date.now()));
       if (endpoint.includeSecret && ENV.ncrApiSecret) sentinelUrl.searchParams.set("secret", ENV.ncrApiSecret);
+      const endpointStart = Date.now();
       const candidate = await fetch(sentinelUrl.toString(), {
         method: "GET",
         headers: {
@@ -4428,13 +4437,15 @@ async function checkSite() {
           "User-Agent": "NCR-Watchdog-Production-Sync/1.0",
           ...endpoint.includeSecret && ENV.ncrApiSecret ? { "NCR-Secret": ENV.ncrApiSecret } : {}
         },
-        signal: AbortSignal.timeout(15e3)
+        signal: AbortSignal.timeout(6e3)
       });
+      const candidateTtfbMs = Math.max(1, Date.now() - endpointStart);
       if (!candidate.ok) {
         lastError = new Error(`WordPress route HTTP ${candidate.status}`);
         continue;
       }
       response = candidate;
+      responseTtfbMs = candidateTtfbMs;
       try {
         raw = await candidate.clone().json();
       } catch {
@@ -4444,7 +4455,7 @@ async function checkSite() {
     }
     if (!response) throw lastError ?? new Error("WordPress NCR routes unavailable");
     const metrics = parseSentinelSystemMetrics(raw);
-    const ttfbMs = Math.max(1, Date.now() - startTime);
+    const ttfbMs = responseTtfbMs || Math.max(1, Date.now() - startTime);
     const cacheStatus = response.headers.get("cf-cache-status") || "SYNCED";
     return {
       httpCode: VERIFIED_ONLINE_HTTP_CODE,
