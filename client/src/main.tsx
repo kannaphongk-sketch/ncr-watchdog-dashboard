@@ -38,11 +38,31 @@ queryClient.getMutationCache().subscribe(event => {
 });
 
 const DEFAULT_API_BASE_URL = "";
-const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).trim().replace(/\/$/, "");
-const isStaleTemporaryApiUrl = /manus|nkcr-watchdog-dashboard-center\.kannaphong-k\.workers\.dev/i.test(rawApiBaseUrl);
-const apiBaseUrl = isStaleTemporaryApiUrl ? DEFAULT_API_BASE_URL : rawApiBaseUrl;
-const trpcUrl = apiBaseUrl ? `${apiBaseUrl}/api/trpc` : "/api/trpc";
-const isCrossOriginApi = apiBaseUrl && typeof window !== "undefined" && new URL(apiBaseUrl).origin !== window.location.origin;
+
+const readViteEnv = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeApiBaseUrl = (value: unknown): string => {
+  const rawValue = readViteEnv(value).replace(/\/$/, "");
+  if (!rawValue) return DEFAULT_API_BASE_URL;
+  if (/manus|nkcr-watchdog-dashboard-center\.kannaphong-k\.workers\.dev/i.test(rawValue)) return DEFAULT_API_BASE_URL;
+
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://ncr-watchdog-dashboard.pages.dev";
+    const url = new URL(rawValue, base);
+    if (!["http:", "https:"].includes(url.protocol)) return DEFAULT_API_BASE_URL;
+    return url.origin === base ? DEFAULT_API_BASE_URL : url.href.replace(/\/$/, "");
+  } catch (error) {
+    console.warn("[api] Invalid VITE_API_BASE_URL; falling back to same-origin /api.", error);
+    return DEFAULT_API_BASE_URL;
+  }
+};
+
+const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const trpcUrl = apiBaseUrl ? new URL("/api/trpc", apiBaseUrl).toString() : "/api/trpc";
+const isCrossOriginApi = Boolean(
+  apiBaseUrl && typeof window !== "undefined" && new URL(apiBaseUrl, window.location.origin).origin !== window.location.origin
+);
 
 const trpcClient = trpc.createClient({
   links: [

@@ -49,21 +49,41 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatMs(ms: number): string {
-  return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`;
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes === 0) return "0 B";
+function formatNumber(value: unknown, fallback = "—"): string {
+  const numeric = toFiniteNumber(value, Number.NaN);
+  return Number.isFinite(numeric) ? numeric.toLocaleString() : fallback;
+}
+
+function formatPercent(value: unknown, fallback = "—"): string {
+  const numeric = toFiniteNumber(value, Number.NaN);
+  return Number.isFinite(numeric) ? `${numeric.toFixed(1)}%` : fallback;
+}
+
+function formatMs(ms: unknown): string {
+  const numeric = toFiniteNumber(ms, Number.NaN);
+  if (!Number.isFinite(numeric)) return "—";
+  return numeric >= 1000 ? `${(numeric / 1000).toFixed(2)}s` : `${Math.round(numeric)}ms`;
+}
+
+function formatBytes(bytes: unknown): string {
+  const numeric = toFiniteNumber(bytes, 0);
+  if (!numeric || numeric <= 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(numeric) / Math.log(k)));
+  return `${(numeric / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function formatTime(date: Date | string | null): string {
+function formatTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
-  return new Date(date).toLocaleString("en-GB", {
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleString("en-GB", {
     timeZone: "Asia/Bangkok",
     month: "short",
     day: "2-digit",
@@ -74,8 +94,11 @@ function formatTime(date: Date | string | null): string {
   });
 }
 
-function formatShortTime(date: Date | string): string {
-  return new Date(date).toLocaleString("en-GB", {
+function formatShortTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleString("en-GB", {
     timeZone: "Asia/Bangkok",
     hour: "2-digit",
     minute: "2-digit",
@@ -338,9 +361,10 @@ export default function Dashboard() {
   const alerts = alertsQuery.data ?? [];
   const rollingTtfbChecks = history.slice(0, 20);
   const avgTtfbFromHistory = rollingTtfbChecks.length
-    ? Math.round(rollingTtfbChecks.reduce((sum, c) => sum + Number(c.ttfbMs || 0), 0) / rollingTtfbChecks.length)
+    ? Math.round(rollingTtfbChecks.reduce((sum, c) => sum + toFiniteNumber(c.ttfbMs), 0) / rollingTtfbChecks.length)
     : 0;
-  const avgTtfb = status?.avgTtfbMs && status.avgTtfbMs > 0 ? status.avgTtfbMs : avgTtfbFromHistory;
+  const currentAvgTtfb = toFiniteNumber(status?.avgTtfbMs, 0);
+  const avgTtfb = currentAvgTtfb > 0 ? currentAvgTtfb : avgTtfbFromHistory;
   const monitoringHistory = history.slice(0, 100);
 
   // Prepare TTFB History block: last 10 stored checks, oldest to newest for readability.
@@ -349,22 +373,26 @@ export default function Dashboard() {
     .reverse()
     .map((c) => ({
       time: formatShortTime(c.createdAt),
-      ttfb: c.ttfbMs,
+      ttfb: toFiniteNumber(c.ttfbMs),
       status: c.isUp ? 1 : 0,
     }));
 
-  const cacheChartData = cf
-    ? [
-        { name: "Cache HIT", value: cf.cachedRequests, fill: "oklch(0.72 0.17 145)" },
-        { name: "Cache MISS", value: cf.totalRequests - cf.cachedRequests, fill: "oklch(0.22 0.02 240)" },
-      ]
-    : [];
+  const cfTotalRequests = toFiniteNumber(cf?.totalRequests, 0);
+  const cfCachedRequests = Math.min(cfTotalRequests, toFiniteNumber(cf?.cachedRequests, 0));
+  const cfCacheHitRate = cfTotalRequests > 0 ? toFiniteNumber(cf?.cacheHitRate, (cfCachedRequests / cfTotalRequests) * 100) : toFiniteNumber(cf?.cacheHitRate, 0);
+  const cfCount404 = toFiniteNumber(cf?.count404, 0);
+  const cfThreats = toFiniteNumber(cf?.threats, 0);
+  const cacheChartData = [
+    { name: "Cache HIT", value: cfCachedRequests, fill: "oklch(0.72 0.17 145)" },
+    { name: "Cache MISS", value: Math.max(0, cfTotalRequests - cfCachedRequests), fill: "oklch(0.22 0.02 240)" },
+  ];
 
-  const uptimePercent = status?.uptimePercent ?? 100;
-  const ttfbStatus = status?.ttfbMs
-    ? status.ttfbMs <= 1000
+  const uptimePercent = toFiniteNumber(status?.uptimePercent, 100);
+  const currentTtfbMs = toFiniteNumber(status?.ttfbMs, 0);
+  const ttfbStatus = currentTtfbMs
+    ? currentTtfbMs <= 1000
       ? "green"
-      : status.ttfbMs <= 3000
+      : currentTtfbMs <= 3000
       ? "yellow"
       : "red"
     : "blue";
@@ -455,7 +483,7 @@ export default function Dashboard() {
             <MetricCard
               icon={TrendingUp}
               label="Uptime"
-              value={`${uptimePercent.toFixed(1)}%`}
+              value={formatPercent(uptimePercent)}
               sub="Last 100 checks"
               accent={uptimePercent >= 99 ? "green" : uptimePercent >= 95 ? "yellow" : "red"}
               loading={statusQuery.isLoading}
@@ -463,7 +491,7 @@ export default function Dashboard() {
             <MetricCard
               icon={BarChart3}
               label="CF Cache Hit"
-              value={cf ? `${cf.cacheHitRate}%` : "—"}
+              value={formatPercent(cfCacheHitRate)}
               sub="24h average"
               accent="blue"
               loading={cfQuery.isLoading}
@@ -524,7 +552,8 @@ export default function Dashboard() {
             {/* DB Heartbeat — Circular Gauge (V10) */}
             {(() => {
               const v6 = wpSentinelQuery.data;
-              const dbMs = v6?.dbLatencyMs ?? null;
+              const rawDbMs = toFiniteNumber(v6?.dbLatencyMs, Number.NaN);
+              const dbMs = Number.isFinite(rawDbMs) ? rawDbMs : null;
               const isLoading = wpSentinelQuery.isLoading;
               // Color bands: green <100ms, yellow 100-500ms, red >500ms
               const gaugeColor = dbMs === null ? "oklch(0.55 0.02 240)"
@@ -573,7 +602,7 @@ export default function Dashboard() {
                         />
                         {/* Center value */}
                         <text x="60" y="60" textAnchor="middle" fontSize="17" fontWeight="700" fontFamily="monospace" fill={gaugeColor}>
-                          {dbMs !== null ? (dbMs >= 1000 ? `${(dbMs/1000).toFixed(1)}s` : `${dbMs}ms`) : "—"}
+                          {formatMs(dbMs)}
                         </text>
                       </svg>
                     )}
@@ -643,7 +672,7 @@ export default function Dashboard() {
             const isLoading = wpSentinelQuery.isLoading;
 
             // Memory gauge
-            const memMb = v6?.memoryUsageMb ?? 0;
+            const memMb = Math.max(0, toFiniteNumber(v6?.memoryUsageMb, 0));
             const memMax = 512;
             const memPct = Math.min(100, Math.round((memMb / memMax) * 100));
             const memColor = (v6?.memoryStatus === 'critical') ? 'oklch(0.65 0.22 25)'
@@ -652,7 +681,7 @@ export default function Dashboard() {
             const memLabel = (v6?.memoryStatus === 'critical') ? '🔴 High' : (v6?.memoryStatus === 'warning') ? '🟡 Moderate' : '🟢 Optimal';
 
             // Disk gauge
-            const diskGb = v6?.diskFreeGb ?? -1;
+            const diskGb = toFiniteNumber(v6?.diskFreeGb, -1);
             const diskManaged = v6?.diskSystemManaged ?? true;
             const diskColor = diskManaged ? 'oklch(0.72 0.17 145)'
               : diskGb < 1.5 ? 'oklch(0.65 0.22 25)'
@@ -661,8 +690,8 @@ export default function Dashboard() {
             const diskLabel = diskManaged ? '🟢 System Managed' : diskGb < 1.5 ? '🔴 Low' : diskGb < 3.0 ? '🟡 Moderate' : '🟢 Ample';
 
             // Image optimization. If the Sentinel plugin omits total inventory, treat zero total as a non-critical complete state.
-            const rawImgOpt = v6?.optimizedImages ?? 0;
-            const rawImgTotal = v6?.totalImages ?? rawImgOpt;
+            const rawImgOpt = toFiniteNumber(v6?.optimizedImages, 0);
+            const rawImgTotal = toFiniteNumber(v6?.totalImages, rawImgOpt);
             const imgOpt = Math.max(0, rawImgOpt);
             const imgTotal = Math.max(0, rawImgTotal);
             const imgPct = imgTotal > 0 ? Math.min(100, Math.round((imgOpt / imgTotal) * 100)) : 100;
@@ -670,11 +699,11 @@ export default function Dashboard() {
             const imgBarColor = imgPct >= 80 ? 'oklch(0.72 0.17 145)' : imgPct >= 50 ? 'oklch(0.78 0.18 80)' : 'oklch(0.65 0.22 25)';
 
             // 404 alert
-            const count404 = v6?.verified404 ?? 0;
+            const count404 = toFiniteNumber(v6?.verified404, 0);
             const has404 = count404 > 0;
 
             // Cache status
-            const cacheLabel = v6?.cacheStatusLabel ?? 'Cache Status: Checking';
+            const cacheLabel = String(v6?.cacheStatusLabel ?? 'Cache Status: Checking');
             const cacheStable = cacheLabel.includes('Stable');
 
             return (
@@ -731,7 +760,7 @@ export default function Dashboard() {
                     <div className="flex flex-col gap-2">
                       <div className="flex items-end justify-between">
                         <span className="font-mono text-2xl font-bold" style={{ color: imgBarColor }}>{imgPct}%</span>
-                        <span className="text-xs text-muted-foreground">{imgOpt.toLocaleString()} / {imgTotal.toLocaleString()}</span>
+                        <span className="text-xs text-muted-foreground">{formatNumber(imgOpt)} / {formatNumber(imgTotal)}</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${imgPct}%`, backgroundColor: imgBarColor }} />
@@ -794,13 +823,13 @@ export default function Dashboard() {
           {(() => {
             const points = latencyTimelineQuery.data ?? [];
             const sparkData = points.map(p => ({
-              time: new Date(p.ts).toLocaleTimeString('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false }),
-              latencyMs: p.latencyMs,
-              status: p.status,
+              time: formatShortTime(p.ts),
+              latencyMs: toFiniteNumber(p.latencyMs),
+              status: String(p.status ?? "unknown"),
             }));
             const isLoading = latencyTimelineQuery.isLoading;
             const lastUpdated = latencyTimelineQuery.dataUpdatedAt
-              ? new Date(latencyTimelineQuery.dataUpdatedAt).toLocaleTimeString('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+              ? formatShortTime(new Date(latencyTimelineQuery.dataUpdatedAt))
               : null;
             return (
               <div className="mt-4 rounded-xl border border-border/60 bg-card p-5">
@@ -944,7 +973,7 @@ export default function Dashboard() {
           {/* CF Cache Donut */}
           <div className="rounded-xl border border-border/60 bg-card p-6">
             <SectionHeader icon={BarChart3} title="CF Cache Ratio" sub="24h hit vs miss" />
-            {cf && cf.totalRequests > 0 ? (
+            {cf ? (
               <div className="flex flex-col items-center gap-4">
                 <ResponsiveContainer width="100%" height={160}>
                   <PieChart>
@@ -962,7 +991,7 @@ export default function Dashboard() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(v: number) => [v.toLocaleString(), ""]}
+                      formatter={(v: number) => [formatNumber(v), ""]}
                       contentStyle={{
                         background: "oklch(0.14 0.015 240)",
                         border: "1px solid oklch(0.22 0.02 240)",
@@ -978,26 +1007,26 @@ export default function Dashboard() {
                       <span className="w-2 h-2 rounded-full bg-emerald-400" />
                       Cache HIT
                     </span>
-                    <span className="font-mono text-emerald-400">{cf.cacheHitRate}%</span>
+                    <span className="font-mono text-emerald-400">{formatPercent(cfCacheHitRate)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-muted" />
                       Cache MISS
                     </span>
-                    <span className="font-mono text-muted-foreground">{100 - cf.cacheHitRate}%</span>
+                    <span className="font-mono text-muted-foreground">{formatPercent(Math.max(0, 100 - cfCacheHitRate))}</span>
                   </div>
                   <div className="flex justify-between items-center pt-1 border-t border-border/40">
                     <span className="text-muted-foreground">Total Requests</span>
-                    <span className="font-mono">{cf.totalRequests.toLocaleString()}</span>
+                    <span className="font-mono">{formatNumber(cfTotalRequests)}</span>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="h-48 flex items-center justify-center text-muted-foreground text-sm text-center">
-                CF analytics unavailable
+                  CF analytics loading
                 <br />
-                <span className="text-xs opacity-60 mt-1 block">Check API token</span>
+                <span className="text-xs opacity-60 mt-1 block">Values appear as soon as the API responds</span>
               </div>
             )}
           </div>
@@ -1010,8 +1039,8 @@ export default function Dashboard() {
             <SectionHeader icon={TrendingUp} title="Traffic (24h)" sub="Cloudflare analytics" />
             <div className="space-y-4">
               {[
-                { label: "Total Requests", value: cf ? cf.totalRequests.toLocaleString() : "—", icon: Globe },
-                { label: "Cached Requests", value: cf ? cf.cachedRequests.toLocaleString() : "—", icon: BarChart3 },
+                { label: "Total Requests", value: cf ? formatNumber(cfTotalRequests) : "—", icon: Globe },
+                { label: "Cached Requests", value: cf ? formatNumber(cfCachedRequests) : "—", icon: BarChart3 },
                 { label: "Bandwidth", value: cf ? formatBytes(cf.bandwidth) : "—", icon: Activity },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
@@ -1046,13 +1075,13 @@ export default function Dashboard() {
               {[
                 {
                   label: "Threats Blocked (CF)",
-                  value: cf ? cf.threats.toLocaleString() : "—",
-                  accent: cf && cf.threats > 0 ? "text-amber-400" : "text-emerald-400",
+                  value: cf ? formatNumber(cfThreats) : "—",
+                  accent: cf && cfThreats > 0 ? "text-amber-400" : "text-emerald-400",
                 },
                 {
                   label: "404 Errors (24h)",
-                  value: cf ? (cf.count404 ?? 0).toLocaleString() : "—",
-                  accent: cf && (cf.count404 ?? 0) > 50 ? "text-red-400" : cf && (cf.count404 ?? 0) > 10 ? "text-amber-400" : "text-emerald-400",
+                  value: cf ? formatNumber(cfCount404) : "—",
+                  accent: cf && cfCount404 > 50 ? "text-red-400" : cf && cfCount404 > 10 ? "text-amber-400" : "text-emerald-400",
                 },
                 {
                   label: "Recent Alerts",
@@ -1326,9 +1355,9 @@ export default function Dashboard() {
                       </td>
                       <td className="py-2 pr-4 text-right">
                         <span className={`font-mono text-xs font-semibold ${
-                          row.hits >= 100 ? "text-red-400" : row.hits >= 20 ? "text-amber-400" : "text-muted-foreground"
+                          toFiniteNumber(row.hits) >= 100 ? "text-red-400" : toFiniteNumber(row.hits) >= 20 ? "text-amber-400" : "text-muted-foreground"
                         }`}>
-                          {row.hits.toLocaleString()}
+                          {formatNumber(row.hits)}
                         </span>
                       </td>
                       <td className="py-2 pr-4 text-right">
@@ -1378,7 +1407,7 @@ export default function Dashboard() {
               value: 1,
               status: d.cfCacheStatus,
               fill: STATUS_COLORS[d.cfCacheStatus] ?? "#6b7280",
-              label: new Date(d.checkedAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              label: formatShortTime(d.checkedAt),
             }));
             // Legend
             const seen = new Set<string>();
@@ -1444,7 +1473,7 @@ export default function Dashboard() {
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground/50 ml-auto">
-                    {d.checkedAt ? new Date(d.checkedAt).toLocaleString() : ""}
+                    {formatTime(d.checkedAt)}
                   </span>
                 </div>
                 <div className="overflow-x-auto">
