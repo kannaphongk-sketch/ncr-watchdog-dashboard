@@ -37,7 +37,8 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const DEFAULT_API_BASE_URL = "https://3000-isieb5gntt2dvgdql65hu-b3c9546d.sg1.manus.computer";
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
 const trpcUrl = apiBaseUrl ? `${apiBaseUrl}/api/trpc` : "/api/trpc";
 const isCrossOriginApi = apiBaseUrl && typeof window !== "undefined" && new URL(apiBaseUrl).origin !== window.location.origin;
 

@@ -394,7 +394,7 @@ async function runExecutiveBriefLogic(): Promise<void> {
   }
 
   msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-  msg += `🔗 <a href="${process.env.DASHBOARD_URL || "https://ncrwatchdog-7aghkphk.manus.space/dashboard"}">ดู Dashboard</a>`;
+  msg += `🔗 <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev"}">ดู Dashboard</a>`;
 
   await sendTelegramMessage(msg);
   await upsertSchedulerState("executive-brief", { lastRunAt: new Date(), lastStatus: "ok" });
@@ -636,7 +636,7 @@ export async function handleKeepalive(req: Request, res: Response) {
           `${alertType} <b>[NCR Zero Ghosting] ตรวจพบ ${alertLabel}!</b>\n` +
           `HTTP: ${siteResult.httpCode} | TTFB: <b>${siteResult.ttfbMs}ms</b>${isHighLatency ? " (เกิน 3,000ms)" : ""}\n` +
           `🕐 ${new Date().toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok" })}\n` +
-          `🔗 <a href="${process.env.DASHBOARD_URL || "https://ncrwatchdog-7aghkphk.manus.space/dashboard"}">ดู Dashboard</a>`;
+          `🔗 <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev"}">ดู Dashboard</a>`;
         await sendTelegramMessage(msg);
         // 4h cooldown for latency alerts, 2h for downtime (more urgent)
         await setCooldown("keepalive-alert", isDown ? 120 : 240);
@@ -652,7 +652,7 @@ export async function handleKeepalive(req: Request, res: Response) {
           `Min: ${variance.minTtfb}ms | Max: ${variance.maxTtfb}ms | Avg: ${variance.avgTtfb}ms\n` +
           `📊 จาก ${variance.samples} การตรวจสอบล่าสุด\n` +
           `⚠️ อาจเกิดจาก Cache MISS หรือ Origin Server โหลดสูง\n` +
-          `🔗 <a href="${process.env.DASHBOARD_URL || "https://ncrwatchdog-7aghkphk.manus.space/dashboard"}">ดู Dashboard</a>`;
+          `🔗 <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev"}">ดู Dashboard</a>`;
         await sendTelegramMessage(msg);
         await setCooldown("keepalive-variance-alert", 360); // 6h cooldown for variance alerts
       }
@@ -674,7 +674,7 @@ export async function handleKeepalive(req: Request, res: Response) {
           `🔴 <b>High Load Detected</b> — WP DB Latency: <b>${wpDb.latencyMs}ms</b>\n` +
           `📊 Status: ${wpDb.isCritical ? "CRITICAL (>1000ms)" : "SLOW (>500ms)"}\n` +
           `💡 แนะนำ: Purge CF Cache เพื่อลด Origin Load\n` +
-          `🔗 <a href="${process.env.DASHBOARD_URL || "https://ncrwatchdog-7aghkphk.manus.space/"}">Dashboard → Purge Cache</a>`;
+          `🔗 <a href="${process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev/"}">Dashboard → Purge Cache</a>`;
         await sendTelegramMessage(highLoadMsg);
         await setCooldown(cooldownKey, cooldownMinutes);
       }
@@ -714,7 +714,7 @@ export async function handleWeeklyQualityAudit(req: Request, res: Response) {
       await upsertQualityAuditResult(issue);
     }
 
-    const dashboardUrl = process.env.DASHBOARD_URL || "https://ncrwatchdog-7aghkphk.manus.space/dashboard";
+    const dashboardUrl = process.env.DASHBOARD_URL || "https://29bfa18a.ncr-dashboard.pages.dev";
     const msg = buildQualityAuditReport(issues, dashboardUrl);
     const result = await sendTelegramMessage(msg);
 

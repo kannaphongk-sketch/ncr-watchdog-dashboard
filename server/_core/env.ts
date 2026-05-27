@@ -6,7 +6,7 @@ export const ENV = {
   tgBotToken: process.env.TELEGRAM_BOT_TOKEN ?? process.env.TG_BOT_TOKEN ?? "",
   tgChatId: EXACT_TELEGRAM_IDS,
   tgAuthorizedChatIds: EXACT_TELEGRAM_IDS,
-  dashboardUrl: process.env.DASHBOARD_URL ?? "https://ncrwatchdog-evxfoanf.manus.space",
+  dashboardUrl: process.env.DASHBOARD_URL ?? process.env.FRONTEND_URL ?? "https://29bfa18a.ncr-dashboard.pages.dev",
   targetSite: "https://nakornchiangrainews.com",
   ttfbThresholdMs: 500,
   appId: process.env.VITE_APP_ID ?? "",
