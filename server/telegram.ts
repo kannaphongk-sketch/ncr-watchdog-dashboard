@@ -14,12 +14,19 @@ export interface TelegramCredentialsOverride {
 
 const REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"];
 
+function splitTelegramChatIds(value?: string | string[] | null): string[] {
+  const rawValues = Array.isArray(value) ? value : [value ?? ENV.tgChatId ?? ""];
+
+  return rawValues
+    .flatMap((rawValue) => String(rawValue ?? "").split(","))
+    .map((rawId) => rawId.trim())
+    .filter(Boolean);
+}
+
 function normalizeTelegramChatIds(value?: string | string[] | null): string[] {
   const ids = new Set<string>(REQUIRED_TELEGRAM_IDS);
-  const values = Array.isArray(value) ? value : String(value ?? ENV.tgChatId ?? "").split(",");
-  for (const rawId of values) {
-    const chatId = String(rawId ?? "").trim();
-    if (chatId) ids.add(chatId);
+  for (const chatId of splitTelegramChatIds(value)) {
+    ids.add(chatId);
   }
   return Array.from(ids);
 }

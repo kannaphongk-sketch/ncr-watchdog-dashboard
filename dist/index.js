@@ -1743,12 +1743,14 @@ __export(telegram_exports, {
   getTelegramConfigurationStatus: () => getTelegramConfigurationStatus,
   sendTelegramMessage: () => sendTelegramMessage
 });
+function splitTelegramChatIds(value) {
+  const rawValues = Array.isArray(value) ? value : [value ?? ENV.tgChatId ?? ""];
+  return rawValues.flatMap((rawValue) => String(rawValue ?? "").split(",")).map((rawId) => rawId.trim()).filter(Boolean);
+}
 function normalizeTelegramChatIds(value) {
   const ids = new Set(REQUIRED_TELEGRAM_IDS2);
-  const values = Array.isArray(value) ? value : String(value ?? ENV.tgChatId ?? "").split(",");
-  for (const rawId of values) {
-    const chatId = String(rawId ?? "").trim();
-    if (chatId) ids.add(chatId);
+  for (const chatId of splitTelegramChatIds(value)) {
+    ids.add(chatId);
   }
   return Array.from(ids);
 }
@@ -4888,10 +4890,13 @@ async function maybeRevertSecurityLevel(alertsFired) {
 function readHeaderValue(value) {
   return Array.isArray(value) ? value.find(Boolean)?.trim() ?? "" : String(value ?? "").trim();
 }
+function readHeaderValues(value) {
+  return Array.isArray(value) ? value.map((item) => item.trim()).filter(Boolean).join(",") : String(value ?? "").trim();
+}
 function getTelegramCredentialOverrides(req) {
   return {
     botToken: readHeaderValue(req.headers["x-ncr-telegram-bot-token"]),
-    chatIds: readHeaderValue(req.headers["x-ncr-telegram-chat-ids"])
+    chatIds: readHeaderValues(req.headers["x-ncr-telegram-chat-ids"])
   };
 }
 function calculateRealtimeUptimePercent(history, currentIsUp) {

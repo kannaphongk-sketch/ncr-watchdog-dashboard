@@ -16,10 +16,14 @@ function readHeaderValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value.find(Boolean)?.trim() ?? "" : String(value ?? "").trim();
 }
 
+function readHeaderValues(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value.map((item) => item.trim()).filter(Boolean).join(",") : String(value ?? "").trim();
+}
+
 function getTelegramCredentialOverrides(req: { headers: Record<string, string | string[] | undefined> }) {
   return {
     botToken: readHeaderValue(req.headers["x-ncr-telegram-bot-token"]),
-    chatIds: readHeaderValue(req.headers["x-ncr-telegram-chat-ids"]),
+    chatIds: readHeaderValues(req.headers["x-ncr-telegram-chat-ids"]),
   };
 }
 
