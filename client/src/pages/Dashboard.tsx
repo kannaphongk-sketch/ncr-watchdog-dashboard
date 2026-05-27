@@ -406,7 +406,9 @@ export default function Dashboard() {
 
   const cfTotalRequests = toFiniteNumber(cf?.totalRequests, 0);
   const cfCachedRequests = Math.min(cfTotalRequests, toFiniteNumber(cf?.cachedRequests, 0));
-  const hasCfAnalyticsData = cfTotalRequests > 0 || cfCachedRequests > 0;
+  const cfHasRawData = cfTotalRequests > 0 || cfCachedRequests > 0;
+  const hasCfAnalyticsData = Boolean(cf?.analyticsAvailable ?? cfHasRawData);
+  const cfAnalyticsUnavailableReason = cf?.unavailableReason || "Cloudflare analytics unavailable";
   const cfCacheHitRate = hasCfAnalyticsData ? toFiniteNumber(cf?.cacheHitRate, (cfCachedRequests / Math.max(1, cfTotalRequests)) * 100) : Number.NaN;
   const cfCount404 = toFiniteNumber(cf?.count404, 0);
   const cfThreats = toFiniteNumber(cf?.threats, 0);
@@ -542,7 +544,7 @@ export default function Dashboard() {
               icon={BarChart3}
               label="CF Cache Hit"
               value={formatPercent(cfCacheHitRate)}
-              sub={hasCfAnalyticsData ? "24h average" : "Cloudflare analytics unavailable"}
+              sub={hasCfAnalyticsData ? "24h average" : cfAnalyticsUnavailableReason}
               accent="blue"
               loading={cfQuery.isLoading}
             />

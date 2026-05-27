@@ -55,20 +55,40 @@ export interface CFAnalytics {
   top404Urls: { url: string; hits: number }[];
   /** Top countries by request count for the requested analytics window */
   countryTraffic: CountryTraffic[];
+  /** True only when Cloudflare GraphQL analytics were configured and returned usable zone data. */
+  analyticsAvailable: boolean;
+  /** Human-readable reason shown by the dashboard when analytics are unavailable. */
+  unavailableReason?: string;
+  /** Runtime variables that must be configured before analytics can be fetched. */
+  missingVariables?: string[];
 }
 
-const CF_ANALYTICS_EMPTY: CFAnalytics = {
-  cacheHitRate: 0,
-  totalRequests: 0,
-  cachedRequests: 0,
-  bandwidth: 0,
-  threats: 0,
-  visits: 0,
-  pageViews: 0,
-  count404: 0,
-  top404Urls: [],
-  countryTraffic: [],
-};
+function buildEmptyCFAnalytics(reason: string, missingVariables: string[] = []): CFAnalytics {
+  return {
+    cacheHitRate: 0,
+    totalRequests: 0,
+    cachedRequests: 0,
+    bandwidth: 0,
+    threats: 0,
+    visits: 0,
+    pageViews: 0,
+    count404: 0,
+    top404Urls: [],
+    countryTraffic: [],
+    analyticsAvailable: false,
+    unavailableReason: reason,
+    missingVariables,
+  };
+}
+
+const CF_ANALYTICS_EMPTY: CFAnalytics = buildEmptyCFAnalytics("Cloudflare analytics unavailable");
+
+function getMissingCloudflareAnalyticsVariables(): string[] {
+  const missing: string[] = [];
+  if (!ENV.cfZoneId) missing.push("CLOUDFLARE_ZONE_ID");
+  if (!ENV.cfApiToken) missing.push("CLOUDFLARE_API_TOKEN");
+  return missing;
+}
 
 /**
  * Get Cloudflare zone analytics (traffic, cache hit rate, visits, page views)
@@ -83,8 +103,9 @@ const CF_ANALYTICS_EMPTY: CFAnalytics = {
  *   uniq.uniques        → unique visitors (HLL estimate)
  */
 export async function getCFAnalytics(windowDays = 1): Promise<CFAnalytics> {
-  if (!ENV.cfApiToken || !ENV.cfZoneId) {
-    return CF_ANALYTICS_EMPTY;
+  const missingVariables = getMissingCloudflareAnalyticsVariables();
+  if (missingVariables.length > 0) {
+    return buildEmptyCFAnalytics(`Cloudflare analytics not configured: missing ${missingVariables.join(", ")}`, missingVariables);
   }
 
   try {
@@ -180,7 +201,7 @@ export async function getCFAnalytics(windowDays = 1): Promise<CFAnalytics> {
 
     const groups = data?.data?.viewer?.zones?.[0]?.httpRequests1dGroups ?? [];
     if (groups.length === 0) {
-      return CF_ANALYTICS_EMPTY;
+      return buildEmptyCFAnalytics("Cloudflare analytics returned no zone data; verify CLOUDFLARE_ZONE_ID and token permissions");
     }
 
     const totals = groups.reduce(
@@ -221,9 +242,11 @@ export async function getCFAnalytics(windowDays = 1): Promise<CFAnalytics> {
       count404,
       top404Urls,
       countryTraffic,
+      analyticsAvailable: true,
     };
-  } catch {
-    return CF_ANALYTICS_EMPTY;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return buildEmptyCFAnalytics(`Cloudflare analytics fetch failed: ${message}`);
   }
 }
 

@@ -20,8 +20,8 @@ function normalizeTelegramIds(value?: string): string {
 }
 
 export const ENV = {
-  cfApiToken: process.env.CF_API_TOKEN ?? "",
-  cfZoneId: process.env.CF_ZONE_ID ?? "",
+  cfApiToken: firstNonEmptyEnv("CLOUDFLARE_API_TOKEN", "CF_API_TOKEN", "CLOUDFLARE_TOKEN"),
+  cfZoneId: firstNonEmptyEnv("CLOUDFLARE_ZONE_ID", "CF_ZONE_ID"),
   tgBotToken: firstNonEmptyEnv(
     "TELEGRAM_BOT_TOKEN",
     "TG_BOT_TOKEN",

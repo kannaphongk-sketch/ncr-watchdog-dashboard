@@ -19,7 +19,7 @@ interface MonitorResult {
 }
 
 const DEFAULT_TARGET_URL = "https://nakornchiangrainews.com";
-const DEFAULT_LATENCY_THRESHOLD_MS = 2_000;
+const DEFAULT_LATENCY_THRESHOLD_MS = 3_500;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 function numericEnv(value: string | undefined, fallback: number): number {
@@ -84,8 +84,8 @@ async function probeTarget(env: CloudflareFunctionEnv): Promise<Omit<MonitorResu
   try {
     const response = await fetch(targetUrl, {
       method: "GET",
-      redirect: "manual",
-      headers: { "Cache-Control": "no-cache", "User-Agent": "ncr-watchdog-cloudflare-cto-monitor/1.0" },
+      redirect: "follow",
+      headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "User-Agent": "ncr-watchdog-cloudflare-cto-monitor/1.0" },
       signal: abort.signal,
     });
     const latencyMs = Date.now() - startedAt;
