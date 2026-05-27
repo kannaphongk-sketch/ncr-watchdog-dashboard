@@ -1,0 +1,1 @@
+ALTER TABLE `broken_links` ADD `is_fixed` boolean DEFAULT false NOT NULL;

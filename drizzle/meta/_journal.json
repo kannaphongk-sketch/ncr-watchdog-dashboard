@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1778903381035,
+      "tag": "0000_wooden_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1778903520784,
+      "tag": "0001_fast_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1779212646535,
+      "tag": "0002_right_eternals",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1779213547131,
+      "tag": "0003_calm_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1779214391407,
+      "tag": "0004_tearful_maverick",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1779222231889,
+      "tag": "0005_rapid_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1779348127308,
+      "tag": "0006_fluffy_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1779453325975,
+      "tag": "0007_smart_jane_foster",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1779469773498,
+      "tag": "0008_remarkable_unus",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1779472647920,
+      "tag": "0009_boring_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1779606716573,
+      "tag": "0010_vengeful_spyke",
+      "breakpoints": true
+    }
+  ]
+}
