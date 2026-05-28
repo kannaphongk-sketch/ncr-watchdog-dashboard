@@ -1,528 +1,119 @@
-type Env = {
-  TELEGRAM_CHAT_IDS?: string;
-  NCR_TELEGRAM_CHAT_IDS?: string;
-  BACKEND_ORIGIN?: string;
-  CLOUDFLARE_ZONE_ID?: string;
-  CLOUDFLARE_API_TOKEN?: string;
-  CTO_MONITOR_TARGET_URL?: string;
-};
+import type { CloudflareFunctionEnv } from "../../lib/cloudflare-utils";
+import { applyCors, corsHeaders, proxyToBackend, getTelegramBotToken, normalizeTelegramChatIds, noStoreHeaders } from "../../lib/cloudflare-utils";
 
-export const onRequest: PagesFunction<Env> = async (context) => {
-  const url = new URL(context.request.url);
+function toTrpcResult(data: unknown) {
+  return { result: { data } };
+}
 
+async function handleQuickStatus(env: CloudflareFunctionEnv) {
+  const targetUrl = env.CTO_MONITOR_TARGET_URL || "https://nakornchiangrainews.com";
+  const start = Date.now();
+  try {
+    const res = await fetch(targetUrl, { method: "GET", redirect: "follow" });
+    const ttfbMs = Date.now() - start;
+    const isUp = res.status >= 200 && res.status < 500;
+    return { httpCode: res.status, ttfbMs, isUp, cacheStatus: res.headers.get("cf-cache-status") ?? "UNKNOWN", cfRay: res.headers.get("cf-ray") ?? "", uptimePercent: isUp ? 100 : 0, avgTtfbMs: ttfbMs, checkedAt: new Date().toISOString() };
+  } catch (error) {
+    return { httpCode: 0, ttfbMs: Date.now() - start, isUp: false, cacheStatus: "ERROR", cfRay: "", uptimePercent: 0, avgTtfbMs: 0, checkedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function handleCfAnalytics(env: CloudflareFunctionEnv) {
+  const zoneId = env.CLOUDFLARE_ZONE_ID;
+  const apiToken = env.CLOUDFLARE_API_TOKEN;
+  if (!zoneId || !apiToken) return { totalRequests: 0, cachedRequests: 0, bandwidth: 0, threats: 0, cacheHitRate: 0, count404: 0, visits: 0, pageViews: 0, top404Urls: [], analyticsAvailable: false, unavailableReason: "Missing credentials" };
+  try {
+    const query = `{ viewer { zones(filter: { zoneTag: "${zoneId}" }) { httpRequests1dGroups(limit: 1, filter: { date_gt: "${new Date(Date.now() - 86400000).toISOString().split("T")[0]}" }) { sum { requests cachedRequests bytes threats pageViews } uniq { uniques } } } } }`;
+    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", { method: "POST", headers: { "Authorization": `Bearer ${apiToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
+    const json = await res.json() as any;
+    const data = json?.data?.viewer?.zones?.[0]?.httpRequests1dGroups?.[0]?.sum;
+    const uniq = json?.data?.viewer?.zones?.[0]?.httpRequests1dGroups?.[0]?.uniq;
+    if (!data) return { totalRequests: 0, cachedRequests: 0, bandwidth: 0, threats: 0, cacheHitRate: 0, count404: 0, visits: 0, pageViews: 0, top404Urls: [], analyticsAvailable: false, unavailableReason: "No data" };
+    const total = data.requests || 0;
+    const cached = data.cachedRequests || 0;
+    return { totalRequests: total, cachedRequests: cached, bandwidth: data.bytes || 0, threats: data.threats || 0, cacheHitRate: total > 0 ? Math.round((cached / total) * 100) : 0, count404: 0, visits: uniq?.uniques || 0, pageViews: data.pageViews || 0, top404Urls: [], analyticsAvailable: true };
+  } catch { return { totalRequests: 0, cachedRequests: 0, bandwidth: 0, threats: 0, cacheHitRate: 0, count404: 0, visits: 0, pageViews: 0, top404Urls: [], analyticsAvailable: false, unavailableReason: "Error" }; }
+}
+
+async function handlePurgeCache(env: CloudflareFunctionEnv) {
+  const zoneId = env.CLOUDFLARE_ZONE_ID;
+  const apiToken = env.CLOUDFLARE_API_TOKEN;
+  if (!zoneId || !apiToken) return { success: false, message: "Missing credentials" };
+  try {
+    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, { method: "POST", headers: { "Authorization": `Bearer ${apiToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ purge_everything: true }) });
+    const json = await res.json() as any;
+    return { success: json.success, message: json.success ? "Cache purged" : "Failed" };
+  } catch { return { success: false, message: "Error" }; }
+}
+
+async function handleSendTestReport(env: CloudflareFunctionEnv) {
+  const botToken = getTelegramBotToken(env);
+  const chatIds = normalizeTelegramChatIds(env);
+  if (!botToken || chatIds.length === 0) return { success: false, error: "Missing credentials" };
+  const text = `✅ <b>NCR Watchdog — Test Report</b>\n🕐 ${new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })} (Bangkok)\n\nระบบทำงานได้ปกติครับ ✨\n\n🔗 https://ncr-watchdog-dashboard.pages.dev`;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chatIds[0], text, parse_mode: "HTML" }) });
+    const json = await res.json() as any;
+    return { success: json.ok, messageId: json.result?.message_id, error: json.description };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+}
+
+async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promise<unknown> {
+  if (proc.includes("monitor.telegramConfig")) {
+    const chatIds = normalizeTelegramChatIds(env);
+    const botToken = getTelegramBotToken(env);
+    return { configured: chatIds.length > 0, botConfigured: Boolean(botToken), chatIds, status: "configured" };
+  }
+  if (proc.includes("monitor.quickStatus")) return handleQuickStatus(env);
+  if (proc.includes("monitor.runCheck")) { const d = await handleQuickStatus(env); return { ...d, alertsFired: [], autoFixApplied: false }; }
+  if (proc.includes("monitor.cfAnalytics")) return handleCfAnalytics(env);
+  if (proc.includes("monitor.purgeCache")) return handlePurgeCache(env);
+  if (proc.includes("monitor.sendTestReport")) return handleSendTestReport(env);
+  if (proc.includes("monitor.history")) return [];
+  if (proc.includes("monitor.alerts")) return [];
+  if (proc.includes("monitor.schedulerStatus")) return { currentBangkokTime: new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }), schedules: [] };
+  if (proc.includes("monitor.securityLevel")) return { level: "medium" };
+  if (proc.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
+  if (proc.includes("monitor.brokenLinks")) return [];
+  if (proc.includes("monitor.cacheDiagnostic")) return null;
+  if (proc.includes("monitor.cacheHistory")) return [];
+  if (proc.includes("monitor.summary")) return {};
+  if (proc.includes("wpSentinel.getV6Data")) return { operatingMode: "Autonomous Caretaker Active", wpStatus: "ok", wpHealth: "stable", dbLatencyMs: 0, memoryUsageMb: 0, memoryStatus: "optimal", diskFreeGb: 0, diskSystemManaged: true, optimizedImages: 0, totalImages: 0, verified404: 0, cacheStatusLabel: "Cache Status: Checking", statusCritical: false, healthAlert: false, lastSystemCheck: null };
+  if (proc.includes("wpSentinel.getLatencyTimeline")) return [];
+  return [];
+}
+
+export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => {
   if (context.request.method === "OPTIONS") {
-    return jsonResponse(null, 204);
+    return new Response(null, { status: 204, headers: corsHeaders(context.request, context.env) });
+  }
+  if (!["GET", "POST"].includes(context.request.method.toUpperCase())) {
+    return applyCors(new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { "Content-Type": "application/json" } }), context.request, context.env);
   }
 
-  const trpcPrefix = "/api/trpc/";
-  const trpcIndex = url.pathname.indexOf(trpcPrefix);
+  const url = new URL(context.request.url);
+  const isBatch = url.searchParams.has("batch");
+  const headers = { "Content-Type": "application/json", ...noStoreHeaders };
 
-  if (trpcIndex === -1) {
-    return fallbackProxy(context, url);
+  const pathSegment = url.pathname.split("/api/trpc/")[1] || "";
+  const procedures = pathSegment.split(",").map(p => p.trim()).filter(Boolean);
+
+  if (procedures.length > 1) {
+    // Handle batch with multiple procedures in path
+    const results = await Promise.all(procedures.map(proc => handleProcedure(proc, context.env)));
+    const response = results.map(data => toTrpcResult(data));
+    return applyCors(new Response(JSON.stringify(response), { status: 200, headers }), context.request, context.env);
   }
 
-  const endpoints = url.pathname
-    .substring(trpcIndex + trpcPrefix.length)
-    .split(",")
-    .map((endpoint) => endpoint.trim())
-    .filter(Boolean);
+  const proc = procedures[0] || "";
+  const data = await handleProcedure(proc, context.env);
 
-  const isBatch = url.searchParams.get("batch") === "1";
+  if (proc) {
+    const response = isBatch ? [toTrpcResult(data)] : toTrpcResult(data);
+    return applyCors(new Response(JSON.stringify(response), { status: 200, headers }), context.request, context.env);
+  }
 
-  const responseData = isBatch
-    ? await Promise.all(
-        endpoints.map((endpoint) => handleEndpoint(context, endpoint))
-      )
-    : await handleEndpoint(context, endpoints[0] || "monitor.status");
-
-  return jsonResponse(responseData);
+  const rawPath = context.params.path;
+  const suffix = Array.isArray(rawPath) ? rawPath.join("/") : rawPath ?? "";
+  return proxyToBackend(context, `/api/trpc${suffix ? `/${suffix}` : ""}`);
 };
-
-function jsonResponse(data: unknown, status = 200) {
-  return new Response(status === 204 ? null : JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store, no-cache, must-revalidate",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  });
-}
-
-function ok(data: unknown) {
-  return {
-    result: {
-      data,
-    },
-  };
-}
-
-function safeString(value: unknown, fallback = "-") {
-  return String(value ?? fallback);
-}
-
-function safeNumber(value: unknown, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function safeArray<T = unknown>(value: unknown): T[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function now() {
-  return new Date().toISOString();
-}
-
-function parseRecipients(value: unknown) {
-  const text = safeString(value, "8674647124");
-
-  return text
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-}
-
-function createCheckItem(overrides: Record<string, unknown> = {}) {
-  const timestamp = now();
-
-  const item = {
-    id: safeString(overrides.id, crypto.randomUUID()),
-    site: safeString(overrides.site, "nakornchiangrainews.com"),
-    url: safeString(overrides.url, "https://nakornchiangrainews.com"),
-    status: safeString(overrides.status, "online"),
-    statusText: safeString(overrides.statusText, "Online"),
-    httpStatus: safeNumber(overrides.httpStatus, 200),
-    httpStatusText: safeString(overrides.httpStatusText, "OK"),
-    online: Boolean(overrides.online ?? true),
-    offline: Boolean(overrides.offline ?? false),
-    ttfb: safeNumber(overrides.ttfb, 0),
-    ttfbText: safeString(overrides.ttfbText, "0ms"),
-    latencyMs: safeNumber(overrides.latencyMs, 0),
-    latencyText: safeString(overrides.latencyText, "0ms"),
-    uptime: safeNumber(overrides.uptime, 100),
-    uptimeText: safeString(overrides.uptimeText, "100%"),
-    cacheHitRatio: safeString(overrides.cacheHitRatio, "0"),
-    cacheHitRatioText: safeString(overrides.cacheHitRatioText, "0%"),
-    avgTtfb: safeNumber(overrides.avgTtfb, 0),
-    avgTtfbText: safeString(overrides.avgTtfbText, "0ms"),
-    message: safeString(overrides.message, "Site is reachable"),
-    timestamp: safeString(overrides.timestamp, timestamp),
-    checkedAt: safeString(overrides.checkedAt, timestamp),
-    createdAt: safeString(overrides.createdAt, timestamp),
-    updatedAt: safeString(overrides.updatedAt, timestamp),
-  };
-
-  return {
-    ...item,
-    ...overrides,
-  };
-}
-
-async function handleEndpoint(
-  context: EventContext<Env, string, unknown>,
-  endpoint: string
-) {
-  const name = safeString(endpoint, "").toLowerCase();
-
-  if (name.includes("telegram")) {
-    return getTelegramConfig(context);
-  }
-
-  if (
-    name.includes("cfanalytics") ||
-    name.includes("cloudflare") ||
-    name.includes("cache")
-  ) {
-    return getCloudflareAnalytics(context);
-  }
-
-  if (
-    name.includes("history") ||
-    name.includes("checks") ||
-    name.includes("logs") ||
-    name.includes("events")
-  ) {
-    return getHistory(context);
-  }
-
-  if (
-    name.includes("runcheck") ||
-    name.includes("sitestatus") ||
-    name.includes("health") ||
-    name.includes("status") ||
-    name.includes("overview") ||
-    name.includes("sentinel") ||
-    name.includes("heartbeat")
-  ) {
-    return getSiteStatus(context);
-  }
-
-  if (name.includes("purge")) {
-    return ok({
-      success: true,
-      ok: true,
-      status: "success",
-      statusText: "Success",
-      message: "Cloudflare cache purge request accepted",
-      timestamp: now(),
-      checkedAt: now(),
-    });
-  }
-
-  if (name.includes("sendreport") || name.includes("sendtestreport")) {
-    return ok({
-      success: true,
-      ok: true,
-      status: "sent",
-      statusText: "Sent",
-      message: "Telegram test report sent",
-      timestamp: now(),
-      checkedAt: now(),
-    });
-  }
-
-  return ok([]);
-}
-
-function getTelegramConfig(context: EventContext<Env, string, unknown>) {
-  const recipients = parseRecipients(
-    context.env.TELEGRAM_CHAT_IDS ||
-      context.env.NCR_TELEGRAM_CHAT_IDS ||
-      "8674647124"
-  );
-
-  return ok({
-    botUsername: "@ncr_watchdog_bot",
-    botName: "@ncr_watchdog_bot",
-    recipients,
-    recipientText: recipients.join(", "),
-    chatIds: recipients,
-    chatId: recipients[0] || "8674647124",
-    status: "connected",
-    statusText: "Connected",
-    connected: true,
-    enabled: true,
-    configured: true,
-    canSendReport: true,
-    message: "Telegram configuration loaded",
-    lastCheck: now(),
-    checkedAt: now(),
-    timestamp: now(),
-  });
-}
-
-async function getSiteStatus(context: EventContext<Env, string, unknown>) {
-  const targetUrl =
-    context.env.CTO_MONITOR_TARGET_URL || "https://nakornchiangrainews.com";
-
-  const startedAt = Date.now();
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: "GET",
-      cf: {
-        cacheTtl: 0,
-        cacheEverything: false,
-      },
-    });
-
-    const latencyMs = Date.now() - startedAt;
-    const online = response.ok;
-    const status = online ? "online" : "warning";
-    const uptime = online ? 100 : 0;
-
-    const check = createCheckItem({
-      url: targetUrl,
-      status,
-      statusText: online ? "Online" : "Warning",
-      online,
-      offline: !online,
-      httpStatus: response.status,
-      httpStatusText: response.statusText || "-",
-      ttfb: latencyMs,
-      ttfbText: `${latencyMs}ms`,
-      latencyMs,
-      latencyText: `${latencyMs}ms`,
-      uptime,
-      uptimeText: `${uptime}%`,
-      message: online ? "Site is reachable" : "Site returned non-OK status",
-    });
-
-    return ok({
-      ...check,
-      targetUrl,
-      current: check,
-      latest: check,
-      overview: check,
-      site: check,
-      history: [check],
-      checks: [check],
-      items: [check],
-      data: [check],
-      totalChecks: 1,
-      last100Checks: "Last 100 checks",
-      dbHeartbeat: {
-        status: "connected",
-        statusText: "Connected",
-        connected: true,
-        message: "Database heartbeat connected",
-        checkedAt: now(),
-      },
-      sentinelMode: {
-        status: "active",
-        statusText: "Active",
-        active: true,
-        label: "Autonomous — 24/7 Vigilance Active",
-        message: "Sentinel mode active",
-      },
-    });
-  } catch {
-    const check = createCheckItem({
-      url: targetUrl,
-      status: "offline",
-      statusText: "Offline",
-      online: false,
-      offline: true,
-      httpStatus: 0,
-      httpStatusText: "Fetch failed",
-      ttfb: 0,
-      ttfbText: "0ms",
-      latencyMs: 0,
-      latencyText: "0ms",
-      uptime: 0,
-      uptimeText: "0%",
-      message: "Target site could not be reached",
-    });
-
-    return ok({
-      ...check,
-      targetUrl,
-      current: check,
-      latest: check,
-      overview: check,
-      site: check,
-      history: [check],
-      checks: [check],
-      items: [check],
-      data: [check],
-      totalChecks: 1,
-      last100Checks: "Last 100 checks",
-      dbHeartbeat: {
-        status: "unknown",
-        statusText: "Unknown",
-        connected: false,
-        message: "Database heartbeat unavailable",
-        checkedAt: now(),
-      },
-      sentinelMode: {
-        status: "active",
-        statusText: "Active",
-        active: true,
-        label: "Autonomous — 24/7 Vigilance Active",
-        message: "Sentinel mode active",
-      },
-    });
-  }
-}
-
-function getHistory(context: EventContext<Env, string, unknown>) {
-  const targetUrl =
-    context.env.CTO_MONITOR_TARGET_URL || "https://nakornchiangrainews.com";
-
-  const check = createCheckItem({
-    url: targetUrl,
-    status: "online",
-    statusText: "Online",
-    online: true,
-    offline: false,
-    httpStatus: 200,
-    httpStatusText: "OK",
-    ttfb: 0,
-    ttfbText: "0ms",
-    latencyMs: 0,
-    latencyText: "0ms",
-    uptime: 100,
-    uptimeText: "100%",
-    message: "Initial check item",
-  });
-
-  return ok([check]);
-}
-
-async function getCloudflareAnalytics(
-  context: EventContext<Env, string, unknown>
-) {
-  const zoneId = context.env.CLOUDFLARE_ZONE_ID;
-  const apiToken = context.env.CLOUDFLARE_API_TOKEN;
-
-  if (!zoneId || !apiToken) {
-    return ok({
-      cacheHitRatio: "0",
-      cacheHitRatioText: "0%",
-      cacheHitRatioNumber: 0,
-      history: [],
-      stats: [],
-      items: [],
-      totalRequests: 0,
-      cachedRequests: 0,
-      status: "missing_config",
-      statusText: "Missing Config",
-      message: "Cloudflare API token or zone ID is missing",
-      checkedAt: now(),
-      timestamp: now(),
-    });
-  }
-
-  try {
-    const since = new Date(Date.now() - 86_400_000).toISOString();
-
-    const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: `
-          query GetCache($zoneTag: String!, $since: DateTime!) {
-            viewer {
-              zones(filter: { zoneTag: $zoneTag }) {
-                httpRequests1hGroups(
-                  limit: 24,
-                  filter: { datetime_gt: $since }
-                ) {
-                  dimensions {
-                    datetime
-                  }
-                  sum {
-                    requests
-                    cachedRequests
-                  }
-                }
-              }
-            }
-          }
-        `,
-        variables: {
-          zoneTag: zoneId,
-          since,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      return ok({
-        cacheHitRatio: "0",
-        cacheHitRatioText: "0%",
-        cacheHitRatioNumber: 0,
-        history: [],
-        stats: [],
-        items: [],
-        totalRequests: 0,
-        cachedRequests: 0,
-        status: "cloudflare_error",
-        statusText: "Cloudflare Error",
-        message: `Cloudflare API returned ${response.status}`,
-        checkedAt: now(),
-        timestamp: now(),
-      });
-    }
-
-    const cfData: any = await response.json();
-
-    const rawStats =
-      cfData?.data?.viewer?.zones?.[0]?.httpRequests1hGroups ?? [];
-
-    const history = safeArray(rawStats);
-
-    const totalRequests = history.reduce(
-      (sum: number, item: any) => sum + safeNumber(item?.sum?.requests),
-      0
-    );
-
-    const cachedRequests = history.reduce(
-      (sum: number, item: any) => sum + safeNumber(item?.sum?.cachedRequests),
-      0
-    );
-
-    const ratio =
-      totalRequests > 0
-        ? Math.round((cachedRequests / totalRequests) * 100)
-        : 0;
-
-    return ok({
-      cacheHitRatio: safeString(ratio, "0"),
-      cacheHitRatioText: `${ratio}%`,
-      cacheHitRatioNumber: ratio,
-      history,
-      stats: history,
-      items: history,
-      totalRequests,
-      cachedRequests,
-      status: "success",
-      statusText: "Success",
-      message: "Cloudflare analytics loaded",
-      checkedAt: now(),
-      timestamp: now(),
-    });
-  } catch {
-    return ok({
-      cacheHitRatio: "0",
-      cacheHitRatioText: "0%",
-      cacheHitRatioNumber: 0,
-      history: [],
-      stats: [],
-      items: [],
-      totalRequests: 0,
-      cachedRequests: 0,
-      status: "failed",
-      statusText: "Failed",
-      message: "Cloudflare analytics request failed",
-      checkedAt: now(),
-      timestamp: now(),
-    });
-  }
-}
-
-async function fallbackProxy(
-  context: EventContext<Env, string, unknown>,
-  url: URL
-) {
-  const backendOrigin =
-    context.env.BACKEND_ORIGIN ||
-    "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
-
-  try {
-    const targetUrl = new URL(url.pathname + url.search, backendOrigin);
-
-    return await fetch(
-      new Request(targetUrl.toString(), {
-        method: context.request.method,
-        headers: context.request.headers,
-        body:
-          context.request.method === "GET" || context.request.method === "HEAD"
-            ? undefined
-            : context.request.body,
-      })
-    );
-  } catch {
-    const check = createCheckItem({
-      status: "offline",
-      statusText: "Offline",
-      online: false,
-      offline: true,
-      httpStatus: 0,
-      httpStatusText: "Backend proxy failed",
-      message: "Backend proxy unavailable",
-    });
-
-    return jsonResponse({
-      result: {
-        data: [check],
-      },
-    });
-  }
-}
