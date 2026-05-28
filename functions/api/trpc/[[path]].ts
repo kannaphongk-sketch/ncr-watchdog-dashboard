@@ -1,3 +1,4 @@
+import superjson from "superjson";
 import type { CloudflareFunctionEnv } from "../../lib/cloudflare-utils";
 import { applyCors, corsHeaders, getTelegramBotToken, noStoreHeaders, normalizeTelegramChatIds, proxyToBackend } from "../../lib/cloudflare-utils";
 
@@ -49,6 +50,7 @@ function generateFallbackData(endpoint: string, env: CloudflareFunctionEnv): unk
     };
   }
 
+  if (endpoint.includes("monitor.sendTestReport")) return { success: false, error: "Backend unavailable" };
   if (endpoint.includes("monitor.schedulerStatus")) return { schedules: [] };
   if (endpoint.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
   if (endpoint.includes("monitor.securityLevel")) return { level: "unknown" };
@@ -68,13 +70,21 @@ function generateFallbackData(endpoint: string, env: CloudflareFunctionEnv): unk
   return null;
 }
 
+function serializeTRPCData(data: unknown): unknown {
+  return superjson.serialize(data);
+}
+
 function buildFallbackPayload(url: URL, env: CloudflareFunctionEnv): unknown {
   const endpoints = getRequestedEndpoints(url);
   const payloads = (endpoints.length ? endpoints : [""]).map(endpoint => ({
-    result: { data: generateFallbackData(endpoint, env) },
+    result: { data: serializeTRPCData(generateFallbackData(endpoint, env)) },
   }));
 
   return url.searchParams.get("batch") === "1" ? payloads : payloads[0];
+}
+
+function shouldServeLocalFallback(url: URL): boolean {
+  return getRequestedEndpoints(url).some(endpoint => endpoint.includes("monitor.telegramConfig"));
 }
 
 export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => {
@@ -84,10 +94,7 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
 
   const url = new URL(context.request.url);
 
-  try {
-    return await proxyToBackend(context, url.pathname);
-  } catch (error) {
-    console.error("[pages/trpc] Backend proxy failed; serving safe fallback payload.", error);
+  if (shouldServeLocalFallback(url)) {
     return applyCors(
       new Response(JSON.stringify(buildFallbackPayload(url, context.env)), {
         status: 200,
@@ -97,4 +104,22 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
       context.env
     );
   }
+
+  try {
+    const response = await proxyToBackend(context, url.pathname);
+    if (response.ok) return response;
+    console.warn(`[pages/trpc] Backend proxy returned ${response.status}; serving safe fallback payload.`);
+  } catch (error) {
+    console.error("[pages/trpc] Backend proxy failed; serving safe fallback payload.", error);
+  }
+
+  return applyCors(
+    new Response(JSON.stringify(buildFallbackPayload(url, context.env)), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...noStoreHeaders },
+    }),
+    context.request,
+    context.env
+  );
 };
+
