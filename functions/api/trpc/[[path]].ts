@@ -36,8 +36,7 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
       status: "configured"
     };
     // superjson format
-    const superjsonData = { json: data, meta: undefined };
-    const result = { result: { data: superjsonData } };
+    const result = { result: { data: { json: data } } };
     const response = isBatch ? [result] : result;
     return applyCors(
       new Response(JSON.stringify(response), {
