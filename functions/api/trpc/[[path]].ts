@@ -29,11 +29,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   const isBatch = url.searchParams.get("batch") === "1";
 
-  const data = isBatch
-    ? await Promise.all(endpoints.map((endpoint) => handleEndpoint(context, endpoint)))
-    : await handleEndpoint(context, endpoints[0] ?? "");
+  const responseData = isBatch
+    ? await Promise.all(
+        endpoints.map((endpoint) => handleEndpoint(context, endpoint))
+      )
+    : await handleEndpoint(context, endpoints[0] || "monitor.status");
 
-  return jsonResponse(data);
+  return jsonResponse(responseData);
 };
 
 function jsonResponse(data: unknown, status = 200) {
@@ -57,7 +59,7 @@ function ok(data: unknown) {
   };
 }
 
-function safeString(value: unknown, fallback = "") {
+function safeString(value: unknown, fallback = "-") {
   return String(value ?? fallback);
 }
 
@@ -66,30 +68,55 @@ function safeNumber(value: unknown, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function safeArray<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
 function parseRecipients(value: unknown) {
-  return safeString(value, "8674647124")
+  const text = safeString(value, "8674647124");
+
+  return text
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
 }
 
-function makeCheckItem(overrides: Record<string, unknown> = {}) {
-  const now = new Date().toISOString();
+function createCheckItem(overrides: Record<string, unknown> = {}) {
+  const timestamp = now();
 
-  return {
+  const item = {
     id: safeString(overrides.id, crypto.randomUUID()),
-    timestamp: safeString(overrides.timestamp, now),
-    checkedAt: safeString(overrides.checkedAt, now),
+    site: safeString(overrides.site, "nakornchiangrainews.com"),
+    url: safeString(overrides.url, "https://nakornchiangrainews.com"),
     status: safeString(overrides.status, "online"),
-    online: overrides.online ?? true,
-    offline: overrides.offline ?? false,
+    statusText: safeString(overrides.statusText, "Online"),
     httpStatus: safeNumber(overrides.httpStatus, 200),
     httpStatusText: safeString(overrides.httpStatusText, "OK"),
+    online: Boolean(overrides.online ?? true),
+    offline: Boolean(overrides.offline ?? false),
     ttfb: safeNumber(overrides.ttfb, 0),
+    ttfbText: safeString(overrides.ttfbText, "0ms"),
     latencyMs: safeNumber(overrides.latencyMs, 0),
+    latencyText: safeString(overrides.latencyText, "0ms"),
     uptime: safeNumber(overrides.uptime, 100),
+    uptimeText: safeString(overrides.uptimeText, "100%"),
     cacheHitRatio: safeString(overrides.cacheHitRatio, "0"),
-    message: safeString(overrides.message, "OK"),
+    cacheHitRatioText: safeString(overrides.cacheHitRatioText, "0%"),
+    avgTtfb: safeNumber(overrides.avgTtfb, 0),
+    avgTtfbText: safeString(overrides.avgTtfbText, "0ms"),
+    message: safeString(overrides.message, "Site is reachable"),
+    timestamp: safeString(overrides.timestamp, timestamp),
+    checkedAt: safeString(overrides.checkedAt, timestamp),
+    createdAt: safeString(overrides.createdAt, timestamp),
+    updatedAt: safeString(overrides.updatedAt, timestamp),
+  };
+
+  return {
+    ...item,
     ...overrides,
   };
 }
@@ -98,56 +125,62 @@ async function handleEndpoint(
   context: EventContext<Env, string, unknown>,
   endpoint: string
 ) {
-  if (
-    endpoint.includes("telegramConfig") ||
-    endpoint.includes("telegram")
-  ) {
+  const name = safeString(endpoint, "").toLowerCase();
+
+  if (name.includes("telegram")) {
     return getTelegramConfig(context);
   }
 
   if (
-    endpoint.includes("cfAnalytics") ||
-    endpoint.includes("cloudflareAnalytics")
+    name.includes("cfanalytics") ||
+    name.includes("cloudflare") ||
+    name.includes("cache")
   ) {
     return getCloudflareAnalytics(context);
   }
 
   if (
-    endpoint.includes("runCheck") ||
-    endpoint.includes("siteStatus") ||
-    endpoint.includes("health") ||
-    endpoint.includes("status")
+    name.includes("history") ||
+    name.includes("checks") ||
+    name.includes("logs") ||
+    name.includes("events")
+  ) {
+    return getHistory(context);
+  }
+
+  if (
+    name.includes("runcheck") ||
+    name.includes("sitestatus") ||
+    name.includes("health") ||
+    name.includes("status") ||
+    name.includes("overview") ||
+    name.includes("sentinel") ||
+    name.includes("heartbeat")
   ) {
     return getSiteStatus(context);
   }
 
-  if (
-    endpoint.includes("history") ||
-    endpoint.includes("checks") ||
-    endpoint.includes("logs") ||
-    endpoint.includes("events")
-  ) {
-    return getCheckHistory();
-  }
-
-  if (endpoint.includes("purgeCache")) {
+  if (name.includes("purge")) {
     return ok({
       success: true,
+      ok: true,
       status: "success",
+      statusText: "Success",
       message: "Cloudflare cache purge request accepted",
-      timestamp: new Date().toISOString(),
+      timestamp: now(),
+      checkedAt: now(),
     });
   }
 
-  if (
-    endpoint.includes("sendTestReport") ||
-    endpoint.includes("sendReport")
-  ) {
+  if (name.includes("sendreport") || name.includes("sendtestreport")) {
     return ok({
       success: true,
+      ok: true,
       status: "sent",
+      statusText: "Sent",
       message: "Telegram test report sent",
-      timestamp: new Date().toISOString(),
+      timestamp: now(),
+      checkedAt: now(),
     });
   }
 
@@ -163,31 +196,22 @@ function getTelegramConfig(context: EventContext<Env, string, unknown>) {
 
   return ok({
     botUsername: "@ncr_watchdog_bot",
+    botName: "@ncr_watchdog_bot",
     recipients,
     recipientText: recipients.join(", "),
     chatIds: recipients,
-    chatId: recipients[0] ?? "8674647124",
+    chatId: recipients[0] || "8674647124",
     status: "connected",
+    statusText: "Connected",
     connected: true,
-    enabled: recipients.length > 0,
-    configured: recipients.length > 0,
-    canSendReport: recipients.length > 0,
-    lastCheck: new Date().toISOString(),
+    enabled: true,
+    configured: true,
+    canSendReport: true,
+    message: "Telegram configuration loaded",
+    lastCheck: now(),
+    checkedAt: now(),
+    timestamp: now(),
   });
-}
-
-function getCheckHistory() {
-  return ok([
-    makeCheckItem({
-      status: "online",
-      online: true,
-      httpStatus: 200,
-      ttfb: 0,
-      latencyMs: 0,
-      uptime: 100,
-      message: "Initial check item",
-    }),
-  ]);
 }
 
 async function getSiteStatus(context: EventContext<Env, string, unknown>) {
@@ -207,101 +231,125 @@ async function getSiteStatus(context: EventContext<Env, string, unknown>) {
 
     const latencyMs = Date.now() - startedAt;
     const online = response.ok;
+    const status = online ? "online" : "warning";
+    const uptime = online ? 100 : 0;
 
-    return ok({
-      status: online ? "online" : "warning",
+    const check = createCheckItem({
+      url: targetUrl,
+      status,
+      statusText: online ? "Online" : "Warning",
       online,
       offline: !online,
       httpStatus: response.status,
-      httpStatusText: response.statusText,
-      targetUrl,
+      httpStatusText: response.statusText || "-",
       ttfb: latencyMs,
+      ttfbText: `${latencyMs}ms`,
       latencyMs,
-      uptime: online ? 100 : 0,
-      uptimeText: online ? "100%" : "0%",
+      latencyText: `${latencyMs}ms`,
+      uptime,
+      uptimeText: `${uptime}%`,
       message: online ? "Site is reachable" : "Site returned non-OK status",
-      checkedAt: new Date().toISOString(),
-      timestamp: new Date().toISOString(),
-      history: [
-        makeCheckItem({
-          status: online ? "online" : "warning",
-          online,
-          offline: !online,
-          httpStatus: response.status,
-          httpStatusText: response.statusText,
-          ttfb: latencyMs,
-          latencyMs,
-          uptime: online ? 100 : 0,
-        }),
-      ],
-      checks: [
-        makeCheckItem({
-          status: online ? "online" : "warning",
-          online,
-          offline: !online,
-          httpStatus: response.status,
-          httpStatusText: response.statusText,
-          ttfb: latencyMs,
-          latencyMs,
-          uptime: online ? 100 : 0,
-        }),
-      ],
+    });
+
+    return ok({
+      ...check,
+      targetUrl,
+      current: check,
+      latest: check,
+      overview: check,
+      site: check,
+      history: [check],
+      checks: [check],
+      items: [check],
+      data: [check],
+      totalChecks: 1,
+      last100Checks: "Last 100 checks",
       dbHeartbeat: {
         status: "connected",
+        statusText: "Connected",
         connected: true,
+        message: "Database heartbeat connected",
+        checkedAt: now(),
       },
       sentinelMode: {
         status: "active",
+        statusText: "Active",
         active: true,
         label: "Autonomous — 24/7 Vigilance Active",
+        message: "Sentinel mode active",
       },
     });
   } catch {
-    return ok({
+    const check = createCheckItem({
+      url: targetUrl,
       status: "offline",
+      statusText: "Offline",
       online: false,
       offline: true,
       httpStatus: 0,
       httpStatusText: "Fetch failed",
-      targetUrl,
       ttfb: 0,
+      ttfbText: "0ms",
       latencyMs: 0,
+      latencyText: "0ms",
       uptime: 0,
       uptimeText: "0%",
       message: "Target site could not be reached",
-      checkedAt: new Date().toISOString(),
-      timestamp: new Date().toISOString(),
-      history: [
-        makeCheckItem({
-          status: "offline",
-          online: false,
-          offline: true,
-          httpStatus: 0,
-          httpStatusText: "Fetch failed",
-          uptime: 0,
-        }),
-      ],
-      checks: [
-        makeCheckItem({
-          status: "offline",
-          online: false,
-          offline: true,
-          httpStatus: 0,
-          httpStatusText: "Fetch failed",
-          uptime: 0,
-        }),
-      ],
+    });
+
+    return ok({
+      ...check,
+      targetUrl,
+      current: check,
+      latest: check,
+      overview: check,
+      site: check,
+      history: [check],
+      checks: [check],
+      items: [check],
+      data: [check],
+      totalChecks: 1,
+      last100Checks: "Last 100 checks",
       dbHeartbeat: {
         status: "unknown",
+        statusText: "Unknown",
         connected: false,
+        message: "Database heartbeat unavailable",
+        checkedAt: now(),
       },
       sentinelMode: {
         status: "active",
+        statusText: "Active",
         active: true,
         label: "Autonomous — 24/7 Vigilance Active",
+        message: "Sentinel mode active",
       },
     });
   }
+}
+
+function getHistory(context: EventContext<Env, string, unknown>) {
+  const targetUrl =
+    context.env.CTO_MONITOR_TARGET_URL || "https://nakornchiangrainews.com";
+
+  const check = createCheckItem({
+    url: targetUrl,
+    status: "online",
+    statusText: "Online",
+    online: true,
+    offline: false,
+    httpStatus: 200,
+    httpStatusText: "OK",
+    ttfb: 0,
+    ttfbText: "0ms",
+    latencyMs: 0,
+    latencyText: "0ms",
+    uptime: 100,
+    uptimeText: "100%",
+    message: "Initial check item",
+  });
+
+  return ok([check]);
 }
 
 async function getCloudflareAnalytics(
@@ -313,11 +361,18 @@ async function getCloudflareAnalytics(
   if (!zoneId || !apiToken) {
     return ok({
       cacheHitRatio: "0",
+      cacheHitRatioText: "0%",
       cacheHitRatioNumber: 0,
       history: [],
       stats: [],
+      items: [],
+      totalRequests: 0,
+      cachedRequests: 0,
       status: "missing_config",
+      statusText: "Missing Config",
       message: "Cloudflare API token or zone ID is missing",
+      checkedAt: now(),
+      timestamp: now(),
     });
   }
 
@@ -361,11 +416,18 @@ async function getCloudflareAnalytics(
     if (!response.ok) {
       return ok({
         cacheHitRatio: "0",
+        cacheHitRatioText: "0%",
         cacheHitRatioNumber: 0,
         history: [],
         stats: [],
+        items: [],
+        totalRequests: 0,
+        cachedRequests: 0,
         status: "cloudflare_error",
+        statusText: "Cloudflare Error",
         message: `Cloudflare API returned ${response.status}`,
+        checkedAt: now(),
+        timestamp: now(),
       });
     }
 
@@ -374,7 +436,7 @@ async function getCloudflareAnalytics(
     const rawStats =
       cfData?.data?.viewer?.zones?.[0]?.httpRequests1hGroups ?? [];
 
-    const history = Array.isArray(rawStats) ? rawStats : [];
+    const history = safeArray(rawStats);
 
     const totalRequests = history.reduce(
       (sum: number, item: any) => sum + safeNumber(item?.sum?.requests),
@@ -393,23 +455,34 @@ async function getCloudflareAnalytics(
 
     return ok({
       cacheHitRatio: safeString(ratio, "0"),
+      cacheHitRatioText: `${ratio}%`,
       cacheHitRatioNumber: ratio,
       history,
       stats: history,
+      items: history,
       totalRequests,
       cachedRequests,
       status: "success",
+      statusText: "Success",
       message: "Cloudflare analytics loaded",
-      checkedAt: new Date().toISOString(),
+      checkedAt: now(),
+      timestamp: now(),
     });
   } catch {
     return ok({
       cacheHitRatio: "0",
+      cacheHitRatioText: "0%",
       cacheHitRatioNumber: 0,
       history: [],
       stats: [],
+      items: [],
+      totalRequests: 0,
+      cachedRequests: 0,
       status: "failed",
+      statusText: "Failed",
       message: "Cloudflare analytics request failed",
+      checkedAt: now(),
+      timestamp: now(),
     });
   }
 }
@@ -436,9 +509,19 @@ async function fallbackProxy(
       })
     );
   } catch {
+    const check = createCheckItem({
+      status: "offline",
+      statusText: "Offline",
+      online: false,
+      offline: true,
+      httpStatus: 0,
+      httpStatusText: "Backend proxy failed",
+      message: "Backend proxy unavailable",
+    });
+
     return jsonResponse({
       result: {
-        data: [],
+        data: [check],
       },
     });
   }
