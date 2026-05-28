@@ -25,7 +25,6 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
 
   const url = new URL(context.request.url);
 
-  // Handle monitor.telegramConfig directly
   if (url.pathname.includes("monitor.telegramConfig")) {
     const isBatch = url.searchParams.has("batch");
     const chatIds = normalizeTelegramChatIds(context.env);
@@ -36,7 +35,10 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
       chatIds,
       status: "configured"
     };
-    const response = isBatch ? [{ result: { data } }] : { result: { data } };
+    // superjson format
+    const superjsonData = { json: data, meta: undefined };
+    const result = { result: { data: superjsonData } };
+    const response = isBatch ? [result] : result;
     return applyCors(
       new Response(JSON.stringify(response), {
         status: 200,
