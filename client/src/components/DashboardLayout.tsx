@@ -49,7 +49,7 @@ export default function DashboardLayout({
   const { loading, user } = useAuth();
 
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, (sidebarWidth ?? "").toString());
   }, [sidebarWidth]);
 
   if (loading) {

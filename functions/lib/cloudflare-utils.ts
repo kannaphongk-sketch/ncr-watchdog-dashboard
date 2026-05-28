@@ -21,6 +21,9 @@ export interface CloudflareFunctionEnv {
   TELEGRAM_AUTHORIZED_CHAT_IDS?: string;
   TG_CHAT_ID?: string;
   TG_CHAT_IDS?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ZONE_ID?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
 }
 
 export const DEFAULT_BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
