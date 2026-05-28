@@ -42,7 +42,7 @@ const readViteEnv = (value: unknown): string =>
 const normalizeApiBaseUrl = (value: unknown): string => {
   const rawValue = readViteEnv(value).replace(/\/$/, "");
   if (!rawValue) return DEFAULT_API_BASE_URL;
-  if (/manus|nkcr-watchdog-dashboard-center\.kannaphong-k\.workers\.dev/i.test(rawValue)) return DEFAULT_API_BASE_URL;
+  if (/manus|nkcr-watchdog-dashboard-center\.kannaphong-k\.workers\.dev|ncr-watchdog-backend\.kannaphong-k\.workers\.dev/i.test(rawValue)) return DEFAULT_API_BASE_URL;
   try {
     const base = typeof window !== "undefined" ? window.location.origin : "https://ncr-watchdog-dashboard.pages.dev";
     const url = new URL(rawValue, base);
