@@ -125,6 +125,10 @@ function normalizeSentinelModeLabel(mode: unknown, status?: unknown): string {
   return isPositiveSentinelValue(status) ? "Autonomous Caretaker Active" : "Autonomous Caretaker Active";
 }
 
+function safeArray<T>(value: readonly T[] | null | undefined): T[] {
+  return Array.isArray(value) ? [...value] : [];
+}
+
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ isUp, httpCode }: { isUp: boolean; httpCode: number }) {
@@ -205,11 +209,12 @@ function SectionHeader({ icon: Icon, title, sub }: { icon: React.ElementType; ti
 // ─── Custom Tooltip for Charts ────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string }[]; label?: string }) {
-  if (!active || !payload?.length) return null;
+  const tooltipPayload = safeArray(payload);
+  if (!active || tooltipPayload.length === 0) return null;
   return (
     <div className="bg-card border border-border rounded-lg px-3 py-2 shadow-xl text-xs">
       <div className="text-muted-foreground mb-1">{label}</div>
-      {payload.map((p, i) => (
+      {tooltipPayload.map((p, i) => (
         <div key={i} className="font-mono font-medium text-foreground">
           {p.name}: {formatMs(p.value)}
         </div>
@@ -361,7 +366,7 @@ export default function Dashboard() {
   }, [sendTestReportMutation]);
 
   const rawStatus = statusQuery.data;
-  const history = historyQuery.data ?? [];
+  const history = safeArray(historyQuery.data);
   const latestHistoryCheck = history[0];
   const hasRealtimeStatus = rawStatus?.httpCode !== undefined && rawStatus?.httpCode !== null;
   const normalizedHttpCode = toFiniteNumber(rawStatus?.httpCode, toFiniteNumber(latestHistoryCheck?.httpCode, 0));
@@ -383,9 +388,13 @@ export default function Dashboard() {
   const cf = cfQuery.data;
   const telegramConfig = telegramConfigQuery.data;
   const telegramConfigured = Boolean(telegramConfig?.configured);
-  const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : (import.meta.env.VITE_TELEGRAM_CHAT_IDS ? [import.meta.env.VITE_TELEGRAM_CHAT_IDS] : ["8674647124"]);
+  const configuredTelegramRecipients = safeArray(telegramConfig?.chatIds);
+  const telegramRecipients = configuredTelegramRecipients.length ? configuredTelegramRecipients : (import.meta.env.VITE_TELEGRAM_CHAT_IDS ? [import.meta.env.VITE_TELEGRAM_CHAT_IDS] : ["8674647124"]);
   const scheduler = schedulerQuery.data;
-  const alerts = alertsQuery.data ?? [];
+  const schedules = safeArray(scheduler?.schedules);
+  const alerts = safeArray(alertsQuery.data);
+  const brokenLinks = safeArray(brokenLinksQuery.data);
+  const cacheHistory = safeArray(cacheHistoryQuery.data);
   const activeBrokenLinksCount = toFiniteNumber(activeBrokenLinksCountQuery.data?.count, 0);
   const activeBrokenLinksDisplay = activeBrokenLinksCountQuery.data == null
     ? "—"
@@ -877,7 +886,7 @@ export default function Dashboard() {
 
           {/* V12.2: DB Latency Sparkline — 24h trend */}
           {(() => {
-            const points = latencyTimelineQuery.data ?? [];
+            const points = safeArray(latencyTimelineQuery.data);
             const sparkData = points.map(p => ({
               time: formatShortTime(p.ts),
               latencyMs: toFiniteNumber(p.latencyMs),
@@ -1228,7 +1237,7 @@ export default function Dashboard() {
         <section className="rounded-xl border border-border/60 bg-card p-6">
           <SectionHeader icon={Clock} title="Scheduler Status" sub="All times in Bangkok (Asia/Bangkok, UTC+7)" />
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {scheduler?.schedules.map((s) => (
+            {schedules.map((s) => (
               <div key={s.jobName} className="rounded-lg border border-border/40 bg-background/50 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-foreground">{s.label}</span>
@@ -1363,7 +1372,7 @@ export default function Dashboard() {
               <XCircle className="w-6 h-6" />
               Failed to load broken links
             </div>
-          ) : (brokenLinksQuery.data ?? []).length === 0 ? (
+          ) : brokenLinks.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-400/40" />
               No broken links detected yet — data populates on each monitor cycle
@@ -1380,7 +1389,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/20">
-                  {(brokenLinksQuery.data ?? []).map((row) => (
+                  {brokenLinks.map((row) => (
                     <tr key={row.id} className={row.isCritical ? "bg-red-500/5" : ""}>
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
@@ -1444,7 +1453,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
               <RefreshCw className="w-4 h-4 animate-spin" /> Loading…
             </div>
-          ) : !cacheHistoryQuery.data || cacheHistoryQuery.data.length === 0 ? (
+          ) : cacheHistory.length === 0 ? (
             <p className="text-sm text-muted-foreground/60 py-4">No cache history yet — click "Run Check Now" to populate.</p>
           ) : (() => {
             // Map statuses to numeric values for bar height; colour by status
@@ -1456,7 +1465,7 @@ export default function Dashboard() {
               BYPASS: "#ef4444",
               DYNAMIC: "#6b7280",
             };
-            const chartData = [...cacheHistoryQuery.data].slice(0, 20).reverse().map((d, i) => ({
+            const chartData = cacheHistory.slice(0, 20).reverse().map((d, i) => ({
               idx: i + 1,
               value: 1,
               status: d.cfCacheStatus,
