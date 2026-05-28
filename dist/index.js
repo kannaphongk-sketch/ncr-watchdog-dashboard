@@ -184,23 +184,18 @@ function firstNonEmptyEnv(...names) {
   return "";
 }
 function normalizeTelegramIds(value) {
-  const ids = /* @__PURE__ */ new Set();
-  for (const requiredId of REQUIRED_TELEGRAM_IDS) ids.add(requiredId);
-  for (const rawId of (value || "").split(",")) {
-    const chatId = rawId.trim();
-    if (chatId) ids.add(chatId);
-  }
-  return Array.from(ids).join(",");
+  const activeIds = new Set(DEFAULT_TELEGRAM_CHAT_IDS);
+  const filteredIds = (value || DEFAULT_TELEGRAM_CHAT_IDS.join(",")).split(",").map((rawId) => rawId.trim()).filter((chatId) => activeIds.has(chatId));
+  return Array.from(new Set(filteredIds.length ? filteredIds : DEFAULT_TELEGRAM_CHAT_IDS)).join(",");
 }
-var REQUIRED_TELEGRAM_IDS, EXACT_TELEGRAM_IDS, ENV;
+var DEFAULT_TELEGRAM_CHAT_IDS, ENV;
 var init_env = __esm({
   "server/_core/env.ts"() {
     "use strict";
-    REQUIRED_TELEGRAM_IDS = ["8855631169", "8674647124", "8216202664"];
-    EXACT_TELEGRAM_IDS = REQUIRED_TELEGRAM_IDS.join(",");
+    DEFAULT_TELEGRAM_CHAT_IDS = ["8741681815"];
     ENV = {
-      cfApiToken: process.env.CF_API_TOKEN ?? "",
-      cfZoneId: process.env.CF_ZONE_ID ?? "",
+      cfApiToken: firstNonEmptyEnv("CLOUDFLARE_API_TOKEN", "CF_API_TOKEN", "CLOUDFLARE_TOKEN"),
+      cfZoneId: firstNonEmptyEnv("CLOUDFLARE_ZONE_ID", "CF_ZONE_ID"),
       tgBotToken: firstNonEmptyEnv(
         "TELEGRAM_BOT_TOKEN",
         "TG_BOT_TOKEN",
@@ -210,8 +205,29 @@ var init_env = __esm({
         "NCR_TELEGRAM_BOT_TOKEN",
         "NCR_WATCHDOG_TELEGRAM_BOT_TOKEN"
       ),
-      tgChatId: normalizeTelegramIds(firstNonEmptyEnv("TELEGRAM_CHAT_IDS", "TELEGRAM_CHAT_ID", "TG_CHAT_IDS", "TG_CHAT_ID", "TELEGRAM_RECIPIENT_IDS")),
-      tgAuthorizedChatIds: normalizeTelegramIds(firstNonEmptyEnv("TELEGRAM_AUTHORIZED_CHAT_IDS", "TG_AUTHORIZED_CHAT_IDS", "TELEGRAM_CHAT_IDS", "TELEGRAM_CHAT_ID")),
+      tgChatId: normalizeTelegramIds(
+        firstNonEmptyEnv(
+          "NCR_TELEGRAM_CHAT_IDS",
+          "NCR_TELEGRAM_CHAT_ID",
+          "TELEGRAM_CHAT_ID",
+          "TELEGRAM_CHAT_IDS",
+          "TG_CHAT_IDS",
+          "TG_CHAT_ID",
+          "TELEGRAM_RECIPIENT_IDS"
+        )
+      ),
+      tgAuthorizedChatIds: normalizeTelegramIds(
+        firstNonEmptyEnv(
+          "NCR_TELEGRAM_AUTHORIZED_CHAT_IDS",
+          "NCR_TELEGRAM_AUTHORIZED_CHAT_ID",
+          "TELEGRAM_AUTHORIZED_CHAT_IDS",
+          "TG_AUTHORIZED_CHAT_IDS",
+          "NCR_TELEGRAM_CHAT_IDS",
+          "NCR_TELEGRAM_CHAT_ID",
+          "TELEGRAM_CHAT_ID",
+          "TELEGRAM_CHAT_IDS"
+        )
+      ),
       dashboardUrl: process.env.DASHBOARD_URL ?? process.env.FRONTEND_URL ?? "https://29bfa18a.ncr-dashboard.pages.dev",
       targetSite: "https://nakornchiangrainews.com",
       ttfbThresholdMs: 500,
@@ -981,9 +997,33 @@ async function purgeCFCache() {
     return { success: false, message: `CF purge failed: ${err.message}` };
   }
 }
+function buildEmptyCFAnalytics(reason, missingVariables = []) {
+  return {
+    cacheHitRate: 0,
+    totalRequests: 0,
+    cachedRequests: 0,
+    bandwidth: 0,
+    threats: 0,
+    visits: 0,
+    pageViews: 0,
+    count404: 0,
+    top404Urls: [],
+    countryTraffic: [],
+    analyticsAvailable: false,
+    unavailableReason: reason,
+    missingVariables
+  };
+}
+function getMissingCloudflareAnalyticsVariables() {
+  const missing = [];
+  if (!ENV.cfZoneId) missing.push("CLOUDFLARE_ZONE_ID");
+  if (!ENV.cfApiToken) missing.push("CLOUDFLARE_API_TOKEN");
+  return missing;
+}
 async function getCFAnalytics(windowDays = 1) {
-  if (!ENV.cfApiToken || !ENV.cfZoneId) {
-    return CF_ANALYTICS_EMPTY;
+  const missingVariables = getMissingCloudflareAnalyticsVariables();
+  if (missingVariables.length > 0) {
+    return buildEmptyCFAnalytics(`Cloudflare analytics not configured: missing ${missingVariables.join(", ")}`, missingVariables);
   }
   try {
     const now = Date.now();
@@ -1047,7 +1087,7 @@ async function getCFAnalytics(windowDays = 1) {
     const data = await res.json();
     const groups = data?.data?.viewer?.zones?.[0]?.httpRequests1dGroups ?? [];
     if (groups.length === 0) {
-      return CF_ANALYTICS_EMPTY;
+      return buildEmptyCFAnalytics("Cloudflare analytics returned no zone data; verify CLOUDFLARE_ZONE_ID and token permissions");
     }
     const totals = groups.reduce(
       (acc, group) => {
@@ -1077,10 +1117,12 @@ async function getCFAnalytics(windowDays = 1) {
       visits: totals.uniques,
       count404,
       top404Urls,
-      countryTraffic
+      countryTraffic,
+      analyticsAvailable: true
     };
-  } catch {
-    return CF_ANALYTICS_EMPTY;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return buildEmptyCFAnalytics(`Cloudflare analytics fetch failed: ${message}`);
   }
 }
 async function getTop404IPsLast5Min(threshold = 100) {
@@ -1698,18 +1740,7 @@ var init_cloudflare = __esm({
   "server/cloudflare.ts"() {
     "use strict";
     init_env();
-    CF_ANALYTICS_EMPTY = {
-      cacheHitRate: 0,
-      totalRequests: 0,
-      cachedRequests: 0,
-      bandwidth: 0,
-      threats: 0,
-      visits: 0,
-      pageViews: 0,
-      count404: 0,
-      top404Urls: [],
-      countryTraffic: []
-    };
+    CF_ANALYTICS_EMPTY = buildEmptyCFAnalytics("Cloudflare analytics unavailable");
   }
 });
 
@@ -1748,11 +1779,8 @@ function splitTelegramChatIds(value) {
   return rawValues.flatMap((rawValue) => String(rawValue ?? "").split(",")).map((rawId) => rawId.trim()).filter(Boolean);
 }
 function normalizeTelegramChatIds(value) {
-  const ids = new Set(REQUIRED_TELEGRAM_IDS2);
-  for (const chatId of splitTelegramChatIds(value)) {
-    ids.add(chatId);
-  }
-  return Array.from(ids);
+  const ids = splitTelegramChatIds(value);
+  return Array.from(new Set(ids.length ? ids : REQUIRED_TELEGRAM_IDS));
 }
 function resolveTelegramBotToken(override) {
   return String(
@@ -1762,14 +1790,14 @@ function resolveTelegramBotToken(override) {
 function getTelegramConfigurationStatus(override) {
   const botToken = resolveTelegramBotToken(override);
   const chatIds = normalizeTelegramChatIds(override?.chatIds);
-  const missingRequiredChatIds = REQUIRED_TELEGRAM_IDS2.filter((id) => !chatIds.includes(id));
+  const missingRequiredChatIds = REQUIRED_TELEGRAM_IDS.filter((id) => !chatIds.includes(id));
   const recipientsConfigured = missingRequiredChatIds.length === 0;
   return {
     configured: recipientsConfigured,
     botConfigured: recipientsConfigured || Boolean(botToken),
     tokenAvailableForSending: Boolean(botToken),
     chatIds,
-    requiredChatIds: REQUIRED_TELEGRAM_IDS2,
+    requiredChatIds: REQUIRED_TELEGRAM_IDS,
     missingRequiredChatIds,
     recipientCount: chatIds.length,
     botName: "@ncr_watchdog_bot",
@@ -1970,16 +1998,8 @@ These pages should never return 404. Please check immediately.
 <b>\u{1F517} Dashboard:</b> ${ENV.dashboardUrl}`;
 }
 function buildAlertMessage(alertType, data) {
-  const icons = {
-    downtime: "\u{1F534}",
-    high_latency: "\u26A0\uFE0F",
-    security: "\u{1F6E1}\uFE0F"
-  };
-  const titles = {
-    downtime: "DOWNTIME DETECTED",
-    high_latency: "HIGH LATENCY DETECTED",
-    security: "SECURITY THREAT DETECTED"
-  };
+  const icons = { downtime: "\u{1F534}", high_latency: "\u26A0\uFE0F", security: "\u{1F6E1}\uFE0F" };
+  const titles = { downtime: "DOWNTIME DETECTED", high_latency: "HIGH LATENCY DETECTED", security: "SECURITY THREAT DETECTED" };
   const icon = icons[alertType];
   const title = titles[alertType];
   const autoFixLine = data.autoFixApplied ? "\n\u2705 <b>Auto-Fix Applied:</b> Cloudflare cache purged" : "\n\u26A0\uFE0F Auto-fix attempted";
@@ -2111,10 +2131,8 @@ function buildTopPostsReport(mode, posts) {
   if (posts.length === 0) {
     lines = "\u2022 \u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25";
   } else {
-    lines = posts.map(
-      (p, i) => `${i + 1}. <a href="${BASE_URL}${p.path}">${p.path}</a>
-   \u{1F441}\uFE0F <b>${p.count.toLocaleString()}</b> \u0E04\u0E23\u0E31\u0E49\u0E07`
-    ).join("\n\n");
+    lines = posts.map((p, i) => `${i + 1}. <a href="${BASE_URL}${p.path}">${p.path}</a>
+   \u{1F441}\uFE0F <b>${p.count.toLocaleString()}</b> \u0E04\u0E23\u0E31\u0E49\u0E07`).join("\n\n");
   }
   return `\u{1F4CA} <b>[NCR] ${label}</b>
 \u{1F4C5} \u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E22\u0E49\u0E2D\u0E19\u0E2B\u0E25\u0E31\u0E07 ${day} \u0E27\u0E31\u0E19
@@ -2241,10 +2259,8 @@ function buildPageSpeedPayloadAlert(pageSizeMb) {
 }
 function buildArticleSpikeAlert(spikes) {
   let msg = `\u{1F680} <b>NCR Traffic Spike Alert</b>
-`;
-  msg += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  msg += `\u0E1E\u0E1A\u0E02\u0E48\u0E32\u0E27\u0E17\u0E35\u0E48\u0E21\u0E35\u0E1C\u0E39\u0E49\u0E40\u0E02\u0E49\u0E32\u0E0A\u0E21\u0E2A\u0E39\u0E07\u0E1C\u0E34\u0E14\u0E1B\u0E01\u0E15\u0E34\u0E43\u0E19 1 \u0E0A\u0E31\u0E48\u0E27\u0E42\u0E21\u0E07\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u0E1E\u0E1A\u0E02\u0E48\u0E32\u0E27\u0E17\u0E35\u0E48\u0E21\u0E35\u0E1C\u0E39\u0E49\u0E40\u0E02\u0E49\u0E32\u0E0A\u0E21\u0E2A\u0E39\u0E07\u0E1C\u0E34\u0E14\u0E1B\u0E01\u0E15\u0E34\u0E43\u0E19 1 \u0E0A\u0E31\u0E48\u0E27\u0E42\u0E21\u0E07\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14
 
 `;
   for (const item of spikes.slice(0, 5)) {
@@ -2258,10 +2274,8 @@ function buildArticleSpikeAlert(spikes) {
 }
 function buildBruteForceLoginAlert(offenders) {
   let msg = `\u{1F6E1}\uFE0F <b>NCR Brute-Force Login Alert</b>
-`;
-  msg += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  msg += `\u0E1E\u0E1A IP \u0E1E\u0E22\u0E32\u0E22\u0E32\u0E21 login/admin \u0E1C\u0E34\u0E14\u0E1E\u0E25\u0E32\u0E14\u0E2A\u0E39\u0E07\u0E43\u0E19 15 \u0E19\u0E32\u0E17\u0E35\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+\u0E1E\u0E1A IP \u0E1E\u0E22\u0E32\u0E22\u0E32\u0E21 login/admin \u0E1C\u0E34\u0E14\u0E1E\u0E25\u0E32\u0E14\u0E2A\u0E39\u0E07\u0E43\u0E19 15 \u0E19\u0E32\u0E17\u0E35\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14
 
 `;
   for (const item of offenders.slice(0, 5)) {
@@ -2269,7 +2283,7 @@ function buildBruteForceLoginAlert(offenders) {
 `;
   }
   msg += `
-\u0E23\u0E30\u0E1A\u0E1A\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48 block \u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34\u0E08\u0E32\u0E01\u0E2A\u0E31\u0E0D\u0E0D\u0E32\u0E13\u0E19\u0E35\u0E49 \u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E2B\u0E25\u0E35\u0E01\u0E40\u0E25\u0E35\u0E48\u0E22\u0E07 false positive; \u0E43\u0E0A\u0E49\u0E04\u0E39\u0E48\u0E01\u0E31\u0E1A Auto-Ban 404 \u0E40\u0E14\u0E34\u0E21\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E01\u0E23\u0E13\u0E35\u0E42\u0E08\u0E21\u0E15\u0E35\u0E0A\u0E31\u0E14\u0E40\u0E08\u0E19`;
+\u0E23\u0E30\u0E1A\u0E1A\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48 block \u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34\u0E08\u0E32\u0E01\u0E2A\u0E31\u0E0D\u0E0D\u0E32\u0E13\u0E19\u0E35\u0E49 \u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E2B\u0E25\u0E35\u0E01\u0E40\u0E25\u0E35\u0E48\u0E22\u0E07 false positive`;
   return msg;
 }
 function buildGoogleIndexingReport(result) {
@@ -2281,10 +2295,8 @@ Skipped: ${result.reason ?? "not configured"}`;
   const indexed = result.results.filter((item) => item.verdict === "indexed").length;
   const needsAttention = result.results.filter((item) => item.verdict !== "indexed");
   let msg = `\u{1F50E} <b>NCR Google Index Monitor</b>
-`;
-  msg += `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-`;
-  msg += `Indexed: <b>${indexed}/${result.results.length}</b> URLs
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+Indexed: <b>${indexed}/${result.results.length}</b> URLs
 `;
   if (needsAttention.length > 0) {
     msg += `
@@ -2300,12 +2312,12 @@ All monitored URLs are indexed or reported as indexed by Google Search Console.`
   }
   return msg;
 }
-var REQUIRED_TELEGRAM_IDS2;
+var REQUIRED_TELEGRAM_IDS;
 var init_telegram = __esm({
   "server/telegram.ts"() {
     "use strict";
     init_env();
-    REQUIRED_TELEGRAM_IDS2 = ["8855631169", "8674647124", "8216202664"];
+    REQUIRED_TELEGRAM_IDS = ["8674647124"];
   }
 });
 
@@ -5184,7 +5196,6 @@ import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path2 from "node:path";
 import { defineConfig } from "vite";
-import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 var PROJECT_ROOT = import.meta.dirname;
 var LOG_DIR = path2.join(PROJECT_ROOT, ".manus-logs");
 var MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
@@ -5297,7 +5308,6 @@ var vite_config_default = defineConfig({
     react(),
     tailwindcss(),
     jsxLocPlugin(),
-    vitePluginManusRuntime(),
     vitePluginManusDebugCollector()
   ],
   resolve: {

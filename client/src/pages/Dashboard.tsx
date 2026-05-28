@@ -59,6 +59,15 @@ function formatNumber(value: unknown, fallback = "—"): string {
   return Number.isFinite(numeric) ? numeric.toLocaleString() : fallback;
 }
 
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeString(value: unknown, fallback = ""): string {
+  const text = (value ?? fallback).toString();
+  return text || fallback;
+}
+
 function formatPercent(value: unknown, fallback = "—"): string {
   const numeric = toFiniteNumber(value, Number.NaN);
   return Number.isFinite(numeric) ? `${numeric.toFixed(1)}%` : fallback;
@@ -127,7 +136,15 @@ function normalizeSentinelModeLabel(mode: unknown, status?: unknown): string {
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ isUp, httpCode }: { isUp: boolean; httpCode: number }) {
+function StatusBadge({ isUp, httpCode, label = "Offline" }: { isUp: boolean; httpCode: number; label?: string }) {
+  if (!httpCode) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/25">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse" />
+        {label}
+      </span>
+    );
+  }
   if (isUp) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
@@ -139,7 +156,7 @@ function StatusBadge({ isUp, httpCode }: { isUp: boolean; httpCode: number }) {
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/25">
       <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-      {httpCode || "—"} Offline
+      {httpCode || "—"} {label}
     </span>
   );
 }
@@ -361,7 +378,7 @@ export default function Dashboard() {
   }, [sendTestReportMutation]);
 
   const rawStatus = statusQuery.data;
-  const history = historyQuery.data ?? [];
+  const history = asArray<NonNullable<typeof historyQuery.data>[number]>(historyQuery.data);
   const latestHistoryCheck = history[0];
   const hasRealtimeStatus = rawStatus?.httpCode !== undefined && rawStatus?.httpCode !== null;
   const normalizedHttpCode = toFiniteNumber(rawStatus?.httpCode, toFiniteNumber(latestHistoryCheck?.httpCode, 0));
@@ -383,9 +400,20 @@ export default function Dashboard() {
   const cf = cfQuery.data;
   const telegramConfig = telegramConfigQuery.data;
   const telegramConfigured = Boolean(telegramConfig?.configured);
-  const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : (import.meta.env.VITE_TELEGRAM_CHAT_IDS ? [import.meta.env.VITE_TELEGRAM_CHAT_IDS] : ["8674647124"]);
+  const backendTelegramRecipients = asArray<unknown>(telegramConfig?.chatIds)
+    .map((chatId) => safeString(chatId).trim())
+    .filter(Boolean);
+  const viteTelegramRecipients = safeString(import.meta.env.VITE_TELEGRAM_CHAT_IDS)
+    .split(",")
+    .map((chatId) => chatId.trim())
+    .filter(Boolean);
+  const telegramRecipients = backendTelegramRecipients.length ? backendTelegramRecipients : (viteTelegramRecipients.length ? viteTelegramRecipients : ["8674647124"]);
   const scheduler = schedulerQuery.data;
-  const alerts = alertsQuery.data ?? [];
+  const schedulerSchedules = asArray<NonNullable<typeof schedulerQuery.data>["schedules"][number]>(scheduler?.schedules);
+  const alerts = asArray<NonNullable<typeof alertsQuery.data>[number]>(alertsQuery.data);
+  const brokenLinks = asArray<NonNullable<typeof brokenLinksQuery.data>[number]>(brokenLinksQuery.data);
+  const cacheHistory = asArray<NonNullable<typeof cacheHistoryQuery.data>[number]>(cacheHistoryQuery.data);
+  const latencyTimeline = asArray<NonNullable<typeof latencyTimelineQuery.data>[number]>(latencyTimelineQuery.data);
   const rollingTtfbChecks = history.slice(0, 20);
   const avgTtfbFromHistory = rollingTtfbChecks.length
     ? Math.round(rollingTtfbChecks.reduce((sum, c) => sum + toFiniteNumber(c.ttfbMs), 0) / rollingTtfbChecks.length)
@@ -422,6 +450,10 @@ export default function Dashboard() {
     ? (historyForUptime.filter((check) => Boolean(check.isUp)).length / historyForUptime.length) * 100
     : undefined;
   const uptimePercent = toFiniteNumber(rawStatus?.uptimePercent, uptimePercentFromHistory ?? (status?.isUp ? 100 : 0));
+  const hasStatusData = Boolean(status);
+  const statusBridgeIssue = statusQuery.isError || historyQuery.isError;
+  const statusDisplayLabel = hasStatusData ? (status?.isUp ? "Online" : "Offline") : (statusBridgeIssue ? "Backend bridge error" : "Checking backend");
+  const statusAccent = hasStatusData ? (status?.isUp ? "green" : "red") : "yellow";
   const currentTtfbMs = toFiniteNumber(status?.ttfbMs, 0);
   const ttfbStatus = currentTtfbMs
     ? currentTtfbMs <= 2500
@@ -447,7 +479,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <StatusBadge isUp={status?.isUp ?? false} httpCode={status?.httpCode ?? 0} />
+            <StatusBadge isUp={status?.isUp ?? false} httpCode={status?.httpCode ?? 0} label={statusDisplayLabel} />
             <span className="text-xs text-muted-foreground font-mono">
               {scheduler?.currentBangkokTime ?? "Loading BKK time…"}
             </span>
@@ -520,8 +552,8 @@ export default function Dashboard() {
               icon={Wifi}
               label="HTTP Status"
               value={status ? `${status.httpCode}` : "—"}
-              sub={status?.isUp ? "Online" : "Offline"}
-              accent={status?.isUp ? "green" : "red"}
+              sub={statusDisplayLabel}
+              accent={statusAccent}
               loading={statusQuery.isLoading}
             />
             <MetricCard
@@ -873,7 +905,7 @@ export default function Dashboard() {
 
           {/* V12.2: DB Latency Sparkline — 24h trend */}
           {(() => {
-            const points = latencyTimelineQuery.data ?? [];
+            const points = latencyTimeline;
             const sparkData = points.map(p => ({
               time: formatShortTime(p.ts),
               latencyMs: toFiniteNumber(p.latencyMs),
@@ -1137,18 +1169,18 @@ export default function Dashboard() {
                 },
                 {
                   label: "Recent Alerts",
-                  value: alerts.length.toString(),
+                  value: (alerts.length ?? "").toString(),
                   accent: alerts.length > 0 ? "text-amber-400" : "text-emerald-400",
                 },
                 {
                   label: "Auto-Fixes Applied",
-                  value: alerts.filter((a) => a.autoFixApplied).length.toString(),
+                  value: (alerts.filter((a) => a.autoFixApplied).length ?? "").toString(),
                   accent: "text-blue-400",
                 },
                 {
                   label: "Broken Links (Active)",
                   value: activeBrokenLinksCountQuery.data != null
-                    ? activeBrokenLinksCountQuery.data.count.toString()
+                    ? (activeBrokenLinksCountQuery.data.count ?? "").toString()
                     : "—",
                   accent: (activeBrokenLinksCountQuery.data?.count ?? 0) > 5
                     ? "text-red-400"
@@ -1226,7 +1258,7 @@ export default function Dashboard() {
         <section className="rounded-xl border border-border/60 bg-card p-6">
           <SectionHeader icon={Clock} title="Scheduler Status" sub="All times in Bangkok (Asia/Bangkok, UTC+7)" />
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {scheduler?.schedules.map((s) => (
+            {schedulerSchedules.map((s) => (
               <div key={s.jobName} className="rounded-lg border border-border/40 bg-background/50 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-foreground">{s.label}</span>
@@ -1361,7 +1393,7 @@ export default function Dashboard() {
               <XCircle className="w-6 h-6" />
               Failed to load broken links
             </div>
-          ) : (brokenLinksQuery.data ?? []).length === 0 ? (
+          ) : brokenLinks.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-400/40" />
               No broken links detected yet — data populates on each monitor cycle
@@ -1378,7 +1410,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/20">
-                  {(brokenLinksQuery.data ?? []).map((row) => (
+                  {brokenLinks.map((row) => (
                     <tr key={row.id} className={row.isCritical ? "bg-red-500/5" : ""}>
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
@@ -1442,7 +1474,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
               <RefreshCw className="w-4 h-4 animate-spin" /> Loading…
             </div>
-          ) : !cacheHistoryQuery.data || cacheHistoryQuery.data.length === 0 ? (
+          ) : cacheHistory.length === 0 ? (
             <p className="text-sm text-muted-foreground/60 py-4">No cache history yet — click "Run Check Now" to populate.</p>
           ) : (() => {
             // Map statuses to numeric values for bar height; colour by status
@@ -1454,7 +1486,7 @@ export default function Dashboard() {
               BYPASS: "#ef4444",
               DYNAMIC: "#6b7280",
             };
-            const chartData = [...cacheHistoryQuery.data].slice(0, 20).reverse().map((d, i) => ({
+            const chartData = [...cacheHistory].slice(0, 20).reverse().map((d, i) => ({
               idx: i + 1,
               value: 1,
               status: d.cfCacheStatus,

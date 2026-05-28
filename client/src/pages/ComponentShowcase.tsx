@@ -634,9 +634,9 @@ export default function ComponentsShowcase() {
                             month => (
                               <SelectItem
                                 key={month}
-                                value={month.toString().padStart(2, "0")}
+                                value={(month ?? "").toString().padStart(2, "0")}
                               >
-                                {month.toString().padStart(2, "0")}
+                                {(month ?? "").toString().padStart(2, "0")}
                               </SelectItem>
                             )
                           )}
@@ -659,7 +659,7 @@ export default function ComponentsShowcase() {
                             { length: 10 },
                             (_, i) => new Date().getFullYear() - 5 + i
                           ).map(year => (
-                            <SelectItem key={year} value={year.toString()}>
+                            <SelectItem key={year} value={(year ?? "").toString()}>
                               {year}
                             </SelectItem>
                           ))}

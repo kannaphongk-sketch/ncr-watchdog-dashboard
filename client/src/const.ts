@@ -24,7 +24,7 @@ export const getLoginUrl = () => {
     url.searchParams.set("redirectUri", redirectUri);
     url.searchParams.set("state", state);
     url.searchParams.set("type", "signIn");
-    return url.toString();
+    return (url ?? "").toString();
   } catch (error) {
     console.warn("[auth] Invalid VITE_OAUTH_PORTAL_URL; staying on the dashboard.", error);
     return "/";

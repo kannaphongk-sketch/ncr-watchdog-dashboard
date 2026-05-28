@@ -35,9 +35,12 @@ queryClient.getMutationCache().subscribe(event => {
 });
 
 const DEFAULT_API_BASE_URL = "";
+const EXPECTED_BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
 
 const readViteEnv = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
+
+const safeToString = (value: unknown): string => (value ?? "").toString();
 
 const normalizeApiBaseUrl = (value: unknown): string => {
   const rawValue = readViteEnv(value).replace(/\/$/, "");
@@ -57,14 +60,26 @@ const normalizeApiBaseUrl = (value: unknown): string => {
 };
 
 const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
-const trpcUrl = apiBaseUrl ? new URL("/api/trpc", apiBaseUrl).toString() : "/api/trpc";
+const trpcUrl = apiBaseUrl ? (new URL("/api/trpc", apiBaseUrl) ?? "").toString() : "/api/trpc";
 const isCrossOriginApi = Boolean(
   apiBaseUrl && typeof window !== "undefined" && new URL(apiBaseUrl, window.location.origin).origin !== window.location.origin
 );
 
+if (typeof window !== "undefined") {
+  console.info("[Config Debugger] NCR Watchdog API bridge", {
+    frontendOrigin: window.location.origin,
+    viteApiBaseUrl: safeToString(import.meta.env.VITE_API_BASE_URL) || "(same-origin /api)",
+    resolvedTrpcUrl: trpcUrl,
+    apiMode: isCrossOriginApi ? "cross-origin" : "same-origin Pages Function proxy",
+    expectedBackendOrigin: EXPECTED_BACKEND_ORIGIN,
+    backendOriginNote: "BACKEND_ORIGIN is a Cloudflare Pages/Worker secret and is not readable in browser JavaScript. Verify it in the Cloudflare dashboard.",
+  });
+}
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
+      transformer: superjson,
       url: trpcUrl,
       async fetch(input, init) {
         const headers = new Headers(init?.headers);
