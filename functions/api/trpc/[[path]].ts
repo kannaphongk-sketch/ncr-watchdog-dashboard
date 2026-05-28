@@ -8,7 +8,7 @@ function trpcPath(params: Record<string, string | string[]>): string {
 }
 
 function toTrpcResponse(data: unknown, isBatch: boolean) {
-  const result = { result: { data: { json: data, meta: { values: {} } } } };
+  const result = { result: { data: { json: data } } };
   return isBatch ? [result] : result;
 }
 
@@ -193,8 +193,8 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
   }
 
   if (url.pathname.includes("/api/trpc/")) {
-    return applyCors(new Response(JSON.stringify(toTrpcResponse(null, isBatch)), { status: 200, headers }), context.request, context.env);
-  }
+  return applyCors(new Response(JSON.stringify(toTrpcResponse([], isBatch)), { status: 200, headers }), context.request, context.env);
+
 
   const suffix = trpcPath(context.params);
   return proxyToBackend(context, `/api/trpc${suffix ? `/${suffix}` : ""}`);
