@@ -15,7 +15,6 @@ export const onRequest: PagesFunction<{
     return fallbackProxy(context, url);
   }
 
-  // แยกชื่อ Endpoint ออกมาเป็น Array เช่น ["monitor.telegramConfig", "monitor.history"]
   const pathStr = url.pathname.substring(trpcIndex + trpcPrefix.length);
   const requestedEndpoints = pathStr.split(',').map(e => e.trim()).filter(Boolean);
 
@@ -23,9 +22,9 @@ export const onRequest: PagesFunction<{
     return fallbackProxy(context, url);
   }
 
-  // 2. ฟังก์ชันจำลองข้อมูลรายตัว (Mock Generator ตามประเภทที่หน้าบ้านคาดหวัง)
-  const generateMockResponse = (endpoint: string) => {
-    // กรณีขอตั้งค่า Telegram (ต้องการ Object ข้อมูลผู้รับ)
+  // 2. ฟังก์ชันจำลองและดึงข้อมูลรายตัว (รองรับการดึงข้อมูลจริงจาก Cloudflare API)
+  const generateMockResponse = async (endpoint: string) => {
+    // 🎯 กรณีขอตั้งค่า Telegram
     if (endpoint.includes('monitor.telegramConfig')) {
       const targetChatId = context.env.TELEGRAM_CHAT_IDS || "8674647124";
       return {
@@ -39,33 +38,87 @@ export const onRequest: PagesFunction<{
       };
     }
 
-    // กรณีขอข้อมูลลิสต์/สถิติ/ประวัติ (บังคับส่ง Array ว่าง [] เพื่อไม่ให้ .map หรือ .slice พัง)
+    // 🎯 LIVE FETCH: ดึงข้อมูลสถิติจาก Cloudflare GraphQL มาคำนวณ Cache Hit
+    if (endpoint.includes('monitor.cfAnalytics')) {
+      const zoneId = context.env.CLOUDFLARE_ZONE_ID;
+      const apiToken = context.env.CLOUDFLARE_API_TOKEN;
+
+      // เซฟตี้ดักจับ: หากยังไม่ได้ผูกกุญแจ Token ให้ส่งกล่องว่างกลับไปก่อนเพื่อไม่ให้หน้าบ้านพัง
+      if (!zoneId || !apiToken) {
+        return { result: { data: [] } };
+      }
+
+      try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const graphqlQuery = JSON.stringify({
+          query: `query GetCacheAnalytics($zoneTag: String!, $since: DateTime!) {
+            viewer {
+              zones(filter: { zoneTag: $zoneTag }) {
+                httpRequests1hGroups(limit: 24, filter: { datetime_gt: $since }) {
+                  dimensions { datetime }
+                  sum {
+                    requests
+                    cachedRequests
+                  }
+                }
+              }
+            }
+          }`,
+          variables: { zoneTag: zoneId, since: oneDayAgo }
+        });
+
+        const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: graphqlQuery
+        });
+
+        const resBody: any = await response.json();
+        const groups = resBody?.data?.viewer?.zones[0]?.httpRequests1hGroups || [];
+        
+        // คลีนและจัดระเบียบโครงสร้างข้อมูล (Normalization) ส่งกลับไปให้หน้าบ้านแมปวาดกราฟได้ทันที
+        const dataPoints = groups.map((g: any) => ({
+          datetime: g.dimensions?.datetime,
+          requests: g.sum?.requests || 0,
+          cachedRequests: g.sum?.cachedRequests || 0,
+          cacheHitRatio: g.sum?.requests > 0 ? Math.round((g.sum.cachedRequests / g.sum.requests) * 100) : 0
+        }));
+
+        return { result: { data: dataPoints } };
+      } catch (err) {
+        return { result: { data: [] } }; // Fallback ป้องกันหน้าจอแตกหาก API ขัดข้อง
+      }
+    }
+
+    // 🎯 กรณีขอข้อมูลลิสต์อื่นๆ (บังคับส่ง Array ว่าง [] เพื่อไม่ให้ .map หรือ .slice พัง)
     if (
       endpoint.includes('monitor.history') ||
       endpoint.includes('monitor.quickStatus') ||
-      endpoint.includes('monitor.cfAnalytics') ||
       endpoint.includes('monitor.runCheck') ||
       endpoint.includes('wpSentinel.getV6Data')
     ) {
       return {
         result: {
-          data: [] // โล่ป้องกันเด็ดขาดสำหรับตัวเตะตัดขา .map()
+          data: []
         }
       };
     }
 
-    // ค่าเริ่มต้นกันเหนียวสำหรับเส้นอื่นๆ
     return { result: { data: [] } };
   };
 
-  // 3. ประกอบร่างข้อมูลส่งกลับให้ตรงตามโครงสร้าง Batching
+  // 3. ประกอบร่างข้อมูลส่งกลับด้วยระเบียบควบคุมกลไก Batching (เปลี่ยนเป็น Asynchronous)
   let finalResponsePayload: any;
   if (isBatch) {
-    // ถ้าหน้าบ้านมัดรวมมา ต้องส่งอาร์เรย์ที่มีจำนวนผลลัพธ์เท่ากับจำนวนที่ขอมาในลำดับเดียวกันเป๊ะ
-    finalResponsePayload = requestedEndpoints.map(endpoint => generateMockResponse(endpoint));
+    // มัดรวมคำขอส่งประมวลผลพร้อมกันผ่าน Promise.all เพื่อความเร็วสูงสุด
+    finalResponsePayload = await Promise.all(
+      requestedEndpoints.map(endpoint => generateMockResponse(endpoint))
+    );
   } else {
-    // ถ้ามาเดี่ยวๆ ก็ส่งกลับไปตัวเดี่ยวๆ
-    finalResponsePayload = generateMockResponse(requestedEndpoints[0]);
+    finalResponsePayload = await generateMockResponse(requestedEndpoints[0]);
   }
 
   return new Response(JSON.stringify(finalResponsePayload), {
@@ -78,7 +131,7 @@ export const onRequest: PagesFunction<{
   });
 };
 
-// 🔄 ท่อสำรองเผื่อเส้นไหนหลุดรอดให้วิ่งไปหาหลังบ้าน Worker ตัวจริง
+// 🔄 ท่อสำรองเผื่อวิ่งไปหาหลังบ้าน Worker ตัวจริง
 async function fallbackProxy(context: any, url: URL) {
   const backendOrigin = context.env.BACKEND_ORIGIN || "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
   try {
