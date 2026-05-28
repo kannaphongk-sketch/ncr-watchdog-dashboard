@@ -411,8 +411,9 @@ export default function Dashboard() {
     : undefined;
   const cf = cfQuery.data;
   const telegramConfig = telegramConfigQuery.data;
-  const telegramConfigured = Boolean(telegramConfig?.configured);
   const telegramRecipients = getTelegramRecipients(telegramConfig);
+  const telegramConfigured = Boolean(telegramConfig?.configured ?? telegramRecipients.length);
+  const telegramStatusUnavailable = telegramConfigQuery.isError && telegramRecipients.length === 0;
   const scheduler = schedulerQuery.data;
   const schedulerSchedules = asArray<NonNullable<NonNullable<typeof schedulerQuery.data>["schedules"]>[number]>(scheduler?.schedules);
   const alerts = asArray<NonNullable<typeof alertsQuery.data>[number]>(alertsQuery.data);
@@ -516,7 +517,7 @@ export default function Dashboard() {
           </Button>
           <Button
             onClick={handleSendTestReport}
-            disabled={isSendingReport || telegramConfigQuery.isError}
+            disabled={isSendingReport}
             variant="outline"
             className="gap-2 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
           >
@@ -535,8 +536,8 @@ export default function Dashboard() {
               @ncr_watchdog_bot recipients: {telegramRecipients.join(", ")}
             </span>
           </div>
-          {telegramConfigQuery.isError && (
-            <p className="mt-1 text-xs text-red-300">Telegram status could not be fetched from the backend proxy; report sending is paused until the API responds.</p>
+          {telegramStatusUnavailable && (
+            <p className="mt-1 text-xs text-red-300">Telegram status could not be fetched; using the safe local recipient fallback.</p>
           )}
           {telegramConfig && !telegramConfig.botConfigured && (
             <p className="mt-1 text-xs">Bot token is not visible to the frontend and must be configured in the backend or Pages environment.</p>

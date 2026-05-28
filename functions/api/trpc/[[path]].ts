@@ -14,7 +14,58 @@ function getRequestedEndpoints(url: URL): string[] {
     .filter(Boolean);
 }
 
-function generateFallbackData(endpoint: string, env: CloudflareFunctionEnv): unknown {
+async function runLocalCheck(env: CloudflareFunctionEnv) {
+  const targetUrl = env.CTO_MONITOR_TARGET_URL || "https://nakornchiangrainews.com";
+  const startedAt = Date.now();
+  const timeoutMs = Number(env.CTO_MONITOR_TIMEOUT_MS || 10000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) ? timeoutMs : 10000);
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "NCR Watchdog Dashboard Pages Fallback",
+      },
+    });
+    const httpCode = response.status;
+    const isUp = httpCode >= 200 && httpCode < 400;
+    return {
+      httpCode,
+      ttfbMs: Date.now() - startedAt,
+      cacheStatus: response.headers.get("CF-Cache-Status") || "UNKNOWN",
+      cfRay: response.headers.get("CF-Ray"),
+      isUp,
+      alertsFired: isUp ? [] : ["downtime"],
+      autoFixApplied: false,
+      uptimePercent: isUp ? 100 : 0,
+      avgTtfbMs: Date.now() - startedAt,
+    };
+  } catch {
+    return {
+      httpCode: 0,
+      ttfbMs: Date.now() - startedAt,
+      cacheStatus: "UNKNOWN",
+      cfRay: null,
+      isUp: false,
+      alertsFired: ["unreachable"],
+      autoFixApplied: false,
+      uptimePercent: 0,
+      avgTtfbMs: 0,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateFallbackData(endpoint: string, env: CloudflareFunctionEnv): Promise<unknown> {
+  if (endpoint.includes("monitor.runCheck")) {
+    return runLocalCheck(env);
+  }
+
   if (endpoint.includes("monitor.telegramConfig")) {
     const chatIds = normalizeTelegramChatIds(env);
     return {
@@ -51,6 +102,9 @@ function generateFallbackData(endpoint: string, env: CloudflareFunctionEnv): unk
   }
 
   if (endpoint.includes("monitor.sendTestReport")) return { success: false, error: "Backend unavailable" };
+  if (endpoint.includes("monitor.purgeCache")) return { success: false, message: "Backend unavailable" };
+  if (endpoint.includes("monitor.approvePurge")) return { success: false, message: "Backend unavailable" };
+  if (endpoint.includes("monitor.markFixed")) return { success: false, message: "Backend unavailable" };
   if (endpoint.includes("monitor.schedulerStatus")) return { schedules: [] };
   if (endpoint.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
   if (endpoint.includes("monitor.securityLevel")) return { level: "unknown" };
@@ -74,17 +128,17 @@ function serializeTRPCData(data: unknown): unknown {
   return superjson.serialize(data);
 }
 
-function buildFallbackPayload(url: URL, env: CloudflareFunctionEnv): unknown {
+async function buildFallbackPayload(url: URL, env: CloudflareFunctionEnv): Promise<unknown> {
   const endpoints = getRequestedEndpoints(url);
-  const payloads = (endpoints.length ? endpoints : [""]).map(endpoint => ({
-    result: { data: serializeTRPCData(generateFallbackData(endpoint, env)) },
-  }));
+  const payloads = await Promise.all((endpoints.length ? endpoints : [""]).map(async endpoint => ({
+    result: { data: serializeTRPCData(await generateFallbackData(endpoint, env)) },
+  })));
 
   return url.searchParams.get("batch") === "1" ? payloads : payloads[0];
 }
 
 function shouldServeLocalFallback(url: URL): boolean {
-  return getRequestedEndpoints(url).some(endpoint => endpoint.includes("monitor.telegramConfig"));
+  return getRequestedEndpoints(url).some(endpoint => endpoint.includes("monitor.telegramConfig") || endpoint.includes("monitor.runCheck"));
 }
 
 export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => {
@@ -96,7 +150,7 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
 
   if (shouldServeLocalFallback(url)) {
     return applyCors(
-      new Response(JSON.stringify(buildFallbackPayload(url, context.env)), {
+      new Response(JSON.stringify(await buildFallbackPayload(url, context.env)), {
         status: 200,
         headers: { "Content-Type": "application/json", ...noStoreHeaders },
       }),
@@ -114,7 +168,7 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
   }
 
   return applyCors(
-    new Response(JSON.stringify(buildFallbackPayload(url, context.env)), {
+    new Response(JSON.stringify(await buildFallbackPayload(url, context.env)), {
       status: 200,
       headers: { "Content-Type": "application/json", ...noStoreHeaders },
     }),
