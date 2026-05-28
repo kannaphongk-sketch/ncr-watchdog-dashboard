@@ -36,12 +36,12 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
       status: "configured"
     };
     // superjson format
-    const result = { result: { data: { json: data } } };
+    const result = { result: { data } };
     const response = isBatch ? [result] : result;
     return applyCors(
       new Response(JSON.stringify(response), {
         status: 200,
-        headers: { "Content-Type": "application/json", ...noStoreHeaders }
+        headers: { "Content-Type": "application/json", "trpc-accept": "application/json", ...noStoreHeaders }
       }),
       context.request,
       context.env
