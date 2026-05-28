@@ -66,7 +66,6 @@ const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
       url: trpcUrl,
-      transformer: superjson,
       async fetch(input, init) {
         const headers = new Headers(init?.headers);
         headers.set("Accept", "application/json");
