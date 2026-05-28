@@ -1,12 +1,11 @@
 export const onRequest: PagesFunction<{
   TELEGRAM_CHAT_IDS?: string;
+  NCR_TELEGRAM_CHAT_IDS?: string;
   BACKEND_ORIGIN?: string;
   CLOUDFLARE_ZONE_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
 }> = async (context) => {
   const url = new URL(context.request.url);
-  const isBatch = url.searchParams.get("batch") === "1";
-
   const trpcPrefix = "/api/trpc/";
   const trpcIndex = url.pathname.indexOf(trpcPrefix);
 
@@ -14,167 +13,174 @@ export const onRequest: PagesFunction<{
     return fallbackProxy(context, url);
   }
 
-  const pathStr = url.pathname.substring(trpcIndex + trpcPrefix.length);
-  const requestedEndpoints = pathStr
+  const isBatch = url.searchParams.get("batch") === "1";
+
+  const endpoints = url.pathname
+    .substring(trpcIndex + trpcPrefix.length)
     .split(",")
     .map((endpoint) => endpoint.trim())
     .filter(Boolean);
 
-  const safeString = (value: unknown, fallback = "-") =>
-    String(value ?? fallback);
+  const result = isBatch
+    ? await Promise.all(endpoints.map((endpoint) => handleEndpoint(context, endpoint)))
+    : await handleEndpoint(context, endpoints[0] ?? "");
 
-  const jsonResponse = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), {
-      status,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-      },
-    });
+  return jsonResponse(result);
+};
 
-  const emptyDataResponse = () => ({
-    result: {
-      data: [],
+const jsonResponse = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
     },
   });
 
-  const generateMockResponse = async (endpoint = "") => {
-    if (endpoint.includes("monitor.cfAnalytics")) {
-      const zoneId = context.env.CLOUDFLARE_ZONE_ID;
-      const apiToken = context.env.CLOUDFLARE_API_TOKEN;
+const safeString = (value: unknown, fallback = "-") =>
+  String(value ?? fallback);
 
-      if (!zoneId || !apiToken) {
-        return {
-          result: {
-            data: {
-              cacheHitRatio: "0",
-              history: [],
-              status: "missing_config",
-            },
-          },
-        };
-      }
+const parseRecipients = (value: unknown) =>
+  safeString(value, "8674647124")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
 
-      try {
-        const since = new Date(Date.now() - 86_400_000).toISOString();
+const emptyResult = () => ({
+  result: {
+    data: {},
+  },
+});
 
-        const body = JSON.stringify({
-          query: `
-            query GetCache($zoneTag: String!, $since: DateTime!) {
-              viewer {
-                zones(filter: { zoneTag: $zoneTag }) {
-                  httpRequests1hGroups(
-                    limit: 24,
-                    filter: { datetime_gt: $since }
-                  ) {
-                    sum {
-                      requests
-                      cachedRequests
-                    }
+async function handleEndpoint(context: any, endpoint: string) {
+  if (endpoint.includes("monitor.telegramConfig")) {
+    const recipients = parseRecipients(
+      context.env.TELEGRAM_CHAT_IDS ||
+        context.env.NCR_TELEGRAM_CHAT_IDS ||
+        "8674647124"
+    );
+
+    return {
+      result: {
+        data: {
+          botUsername: "@ncr_watchdog_bot",
+          recipients,
+          recipientText: recipients.join(", "),
+          status: "connected",
+          enabled: recipients.length > 0,
+          lastCheck: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  if (endpoint.includes("monitor.cfAnalytics")) {
+    return getCloudflareAnalytics(context);
+  }
+
+  return emptyResult();
+}
+
+async function getCloudflareAnalytics(context: any) {
+  const zoneId = context.env.CLOUDFLARE_ZONE_ID;
+  const apiToken = context.env.CLOUDFLARE_API_TOKEN;
+
+  if (!zoneId || !apiToken) {
+    return {
+      result: {
+        data: {
+          cacheHitRatio: "0",
+          history: [],
+          status: "missing_config",
+        },
+      },
+    };
+  }
+
+  try {
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+
+    const response = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: `
+          query GetCache($zoneTag: String!, $since: DateTime!) {
+            viewer {
+              zones(filter: { zoneTag: $zoneTag }) {
+                httpRequests1hGroups(
+                  limit: 24,
+                  filter: { datetime_gt: $since }
+                ) {
+                  sum {
+                    requests
+                    cachedRequests
                   }
                 }
               }
             }
-          `,
-          variables: {
-            zoneTag: zoneId,
-            since,
-          },
-        });
-
-        const response = await fetch(
-          "https://api.cloudflare.com/client/v4/graphql",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${apiToken}`,
-              "Content-Type": "application/json",
-            },
-            body,
           }
-        );
+        `,
+        variables: {
+          zoneTag: zoneId,
+          since,
+        },
+      }),
+    });
 
-        if (!response.ok) {
-          return {
-            result: {
-              data: {
-                cacheHitRatio: "0",
-                history: [],
-                status: "cloudflare_error",
-              },
-            },
-          };
-        }
-
-        const cfData: any = await response.json();
-
-        const stats =
-          cfData?.data?.viewer?.zones?.[0]?.httpRequests1hGroups ?? [];
-
-        const total = stats.reduce(
-          (acc: number, item: any) =>
-            acc + Number(item?.sum?.requests ?? 0),
-          0
-        );
-
-        const cached = stats.reduce(
-          (acc: number, item: any) =>
-            acc + Number(item?.sum?.cachedRequests ?? 0),
-          0
-        );
-
-        const ratio = total > 0 ? Math.round((cached / total) * 100) : 0;
-
-        return {
-          result: {
-            data: {
-              cacheHitRatio: safeString(ratio, "0"),
-              history: Array.isArray(stats) ? stats : [],
-              status: "success",
-            },
-          },
-        };
-      } catch {
-        return {
-          result: {
-            data: {
-              cacheHitRatio: "0",
-              history: [],
-              status: "failed",
-            },
-          },
-        };
-      }
-    }
-
-    if (endpoint.includes("monitor.telegramConfig")) {
+    if (!response.ok) {
       return {
         result: {
           data: {
-            recipients: safeString(
-              context.env.TELEGRAM_CHAT_IDS,
-              "8674647124"
-            ),
-            status: "connected",
+            cacheHitRatio: "0",
+            history: [],
+            status: "cloudflare_error",
           },
         },
       };
     }
 
-    return emptyDataResponse();
-  };
+    const cfData: any = await response.json();
+    const stats =
+      cfData?.data?.viewer?.zones?.[0]?.httpRequests1hGroups ?? [];
 
-  if (isBatch) {
-    const results = await Promise.all(
-      requestedEndpoints.map((endpoint) => generateMockResponse(endpoint))
+    const total = stats.reduce(
+      (sum: number, item: any) => sum + Number(item?.sum?.requests ?? 0),
+      0
     );
 
-    return jsonResponse(results);
+    const cached = stats.reduce(
+      (sum: number, item: any) =>
+        sum + Number(item?.sum?.cachedRequests ?? 0),
+      0
+    );
+
+    const ratio = total > 0 ? Math.round((cached / total) * 100) : 0;
+
+    return {
+      result: {
+        data: {
+          cacheHitRatio: safeString(ratio, "0"),
+          history: Array.isArray(stats) ? stats : [],
+          status: "success",
+        },
+      },
+    };
+  } catch {
+    return {
+      result: {
+        data: {
+          cacheHitRatio: "0",
+          history: [],
+          status: "failed",
+        },
+      },
+    };
   }
-
-  const result = await generateMockResponse(requestedEndpoints[0]);
-
-  return jsonResponse(result);
-};
+}
 
 async function fallbackProxy(context: any, url: URL) {
   const backendOrigin =
@@ -186,18 +192,10 @@ async function fallbackProxy(context: any, url: URL) {
 
     return await fetch(new Request(targetUrl.toString(), context.request));
   } catch {
-    return new Response(
-      JSON.stringify({
-        result: {
-          data: [],
-        },
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
-      }
-    );
+    return jsonResponse({
+      result: {
+        data: {},
+      },
+    });
   }
 }
