@@ -386,6 +386,10 @@ export default function Dashboard() {
   const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : (import.meta.env.VITE_TELEGRAM_CHAT_IDS ? [import.meta.env.VITE_TELEGRAM_CHAT_IDS] : ["8674647124"]);
   const scheduler = schedulerQuery.data;
   const alerts = alertsQuery.data ?? [];
+  const activeBrokenLinksCount = toFiniteNumber(activeBrokenLinksCountQuery.data?.count, 0);
+  const activeBrokenLinksDisplay = activeBrokenLinksCountQuery.data == null
+    ? "—"
+    : formatNumber(activeBrokenLinksCountQuery.data?.count);
   const rollingTtfbChecks = history.slice(0, 20);
   const avgTtfbFromHistory = rollingTtfbChecks.length
     ? Math.round(rollingTtfbChecks.reduce((sum, c) => sum + toFiniteNumber(c.ttfbMs), 0) / rollingTtfbChecks.length)
@@ -1147,12 +1151,10 @@ export default function Dashboard() {
                 },
                 {
                   label: "Broken Links (Active)",
-                  value: activeBrokenLinksCountQuery.data != null
-                    ? activeBrokenLinksCountQuery.data.count.toString()
-                    : "—",
-                  accent: (activeBrokenLinksCountQuery.data?.count ?? 0) > 5
+                  value: activeBrokenLinksDisplay,
+                  accent: activeBrokenLinksCount > 5
                     ? "text-red-400"
-                    : (activeBrokenLinksCountQuery.data?.count ?? 0) > 0
+                    : activeBrokenLinksCount > 0
                     ? "text-amber-400"
                     : "text-emerald-400",
                 },
