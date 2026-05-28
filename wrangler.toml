@@ -17,3 +17,11 @@ NCR_TELEGRAM_CHAT_IDS = "8674647124"
 
 [triggers]
 crons = ["0 2 * * *", "0 * * * *"]
+
+[triggers]
+crons = [
+  "0 2 * * *",
+  "0 2 * * 1",
+  "0 2 1 * *",
+  "0 * * * *"
+]
