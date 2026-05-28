@@ -49,6 +49,31 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+const DEFAULT_TELEGRAM_CHAT_IDS = ["8674647124"] as const;
+
+function asArray<T = never>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function parseRecipientList(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" || typeof value === "number" ? String(value).split(",") : [];
+  return values
+    .map(recipient => String(recipient ?? "").trim())
+    .filter(Boolean);
+}
+
+function getTelegramRecipients(config: unknown): string[] {
+  const record = config && typeof config === "object" ? (config as Record<string, unknown>) : {};
+  const recipients = [
+    ...parseRecipientList(record.chatIds),
+    ...parseRecipientList(record.recipients),
+    ...parseRecipientList(record.recipient),
+    ...parseRecipientList(import.meta.env.VITE_TELEGRAM_CHAT_IDS),
+  ];
+  const uniqueRecipients = Array.from(new Set(recipients));
+  return uniqueRecipients.length ? uniqueRecipients : [...DEFAULT_TELEGRAM_CHAT_IDS];
+}
+
 function toFiniteNumber(value: unknown, fallback = 0): number {
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -361,7 +386,7 @@ export default function Dashboard() {
   }, [sendTestReportMutation]);
 
   const rawStatus = statusQuery.data;
-  const history = historyQuery.data ?? [];
+  const history = asArray<NonNullable<typeof historyQuery.data>[number]>(historyQuery.data);
   const latestHistoryCheck = history[0];
   const hasRealtimeStatus = rawStatus?.httpCode !== undefined && rawStatus?.httpCode !== null;
   const normalizedHttpCode = toFiniteNumber(rawStatus?.httpCode, toFiniteNumber(latestHistoryCheck?.httpCode, 0));
@@ -383,9 +408,10 @@ export default function Dashboard() {
   const cf = cfQuery.data;
   const telegramConfig = telegramConfigQuery.data;
   const telegramConfigured = Boolean(telegramConfig?.configured);
-  const telegramRecipients = telegramConfig?.chatIds?.length ? telegramConfig.chatIds : (import.meta.env.VITE_TELEGRAM_CHAT_IDS ? [import.meta.env.VITE_TELEGRAM_CHAT_IDS] : ["8674647124"]);
+  const telegramRecipients = getTelegramRecipients(telegramConfig);
   const scheduler = schedulerQuery.data;
-  const alerts = alertsQuery.data ?? [];
+  const schedulerSchedules = asArray<NonNullable<NonNullable<typeof schedulerQuery.data>["schedules"]>[number]>(scheduler?.schedules);
+  const alerts = asArray<NonNullable<typeof alertsQuery.data>[number]>(alertsQuery.data);
   const rollingTtfbChecks = history.slice(0, 20);
   const avgTtfbFromHistory = rollingTtfbChecks.length
     ? Math.round(rollingTtfbChecks.reduce((sum, c) => sum + toFiniteNumber(c.ttfbMs), 0) / rollingTtfbChecks.length)
@@ -393,6 +419,7 @@ export default function Dashboard() {
   const currentAvgTtfb = toFiniteNumber(status?.avgTtfbMs, 0);
   const avgTtfb = currentAvgTtfb > 0 ? currentAvgTtfb : avgTtfbFromHistory;
   const monitoringHistory = history.slice(0, 100);
+  const activeBrokenLinksCount = toFiniteNumber(activeBrokenLinksCountQuery.data?.count, Number.NaN);
 
   // Prepare TTFB History block: last 10 stored checks, oldest to newest for readability.
   const chartData = [...history]
@@ -873,7 +900,7 @@ export default function Dashboard() {
 
           {/* V12.2: DB Latency Sparkline — 24h trend */}
           {(() => {
-            const points = latencyTimelineQuery.data ?? [];
+            const points = asArray<NonNullable<typeof latencyTimelineQuery.data>[number]>(latencyTimelineQuery.data);
             const sparkData = points.map(p => ({
               time: formatShortTime(p.ts),
               latencyMs: toFiniteNumber(p.latencyMs),
@@ -1147,12 +1174,12 @@ export default function Dashboard() {
                 },
                 {
                   label: "Broken Links (Active)",
-                  value: activeBrokenLinksCountQuery.data != null
-                    ? activeBrokenLinksCountQuery.data.count.toString()
+                  value: Number.isFinite(activeBrokenLinksCount)
+                    ? activeBrokenLinksCount.toString()
                     : "—",
-                  accent: (activeBrokenLinksCountQuery.data?.count ?? 0) > 5
+                  accent: activeBrokenLinksCount > 5
                     ? "text-red-400"
-                    : (activeBrokenLinksCountQuery.data?.count ?? 0) > 0
+                    : activeBrokenLinksCount > 0
                     ? "text-amber-400"
                     : "text-emerald-400",
                 },
@@ -1226,7 +1253,7 @@ export default function Dashboard() {
         <section className="rounded-xl border border-border/60 bg-card p-6">
           <SectionHeader icon={Clock} title="Scheduler Status" sub="All times in Bangkok (Asia/Bangkok, UTC+7)" />
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {scheduler?.schedules.map((s) => (
+            {schedulerSchedules.map((s) => (
               <div key={s.jobName} className="rounded-lg border border-border/40 bg-background/50 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-foreground">{s.label}</span>
@@ -1378,7 +1405,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/20">
-                  {(brokenLinksQuery.data ?? []).map((row) => (
+                  {asArray<NonNullable<typeof brokenLinksQuery.data>[number]>(brokenLinksQuery.data).map((row) => (
                     <tr key={row.id} className={row.isCritical ? "bg-red-500/5" : ""}>
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
@@ -1454,7 +1481,7 @@ export default function Dashboard() {
               BYPASS: "#ef4444",
               DYNAMIC: "#6b7280",
             };
-            const chartData = [...cacheHistoryQuery.data].slice(0, 20).reverse().map((d, i) => ({
+            const chartData = asArray<NonNullable<typeof cacheHistoryQuery.data>[number]>(cacheHistoryQuery.data).slice(0, 20).reverse().map((d, i) => ({
               idx: i + 1,
               value: 1,
               status: d.cfCacheStatus,

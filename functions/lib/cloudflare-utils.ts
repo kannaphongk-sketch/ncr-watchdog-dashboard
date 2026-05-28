@@ -1,5 +1,7 @@
 export interface CloudflareFunctionEnv {
   BACKEND_ORIGIN?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ZONE_ID?: string;
   FRONTEND_URL?: string;
   DASHBOARD_URL?: string;
   ALLOWED_ORIGINS?: string;
