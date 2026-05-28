@@ -8,7 +8,7 @@ function trpcPath(params: Record<string, string | string[]>): string {
 }
 
 function toTrpcResponse(data: unknown, isBatch: boolean) {
-  const result = { result: { data: { json: data } } };
+  const result = { result: { data } };
   return isBatch ? [result] : result;
 }
 
