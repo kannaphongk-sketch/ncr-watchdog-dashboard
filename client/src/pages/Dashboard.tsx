@@ -1,19 +1,4 @@
-/**
- * client/src/hooks/useDashboard.ts
- *
- * Fetches monitor data directly from the Cloudflare Pages Function
- * (/api/trpc/...) without going through the Express tRPC server.
- *
- * Why: server/routers.ts runs on Express (Node.js). When Express tries to
- * fetch("/api/trpc/...") with a relative URL there is no base URL, so the
- * request fails silently. The Pages Function at functions/api/trpc/[[path]].ts
- * already has CLOUDFLARE_API_TOKEN and handles everything — we just need to
- * call it from the browser.
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
-
-// ── Types (mirror what [[path]].ts returns) ───────────────────────────────────
 
 export interface QuickStatus {
   httpCode: number;
@@ -109,17 +94,12 @@ export interface ActiveBrokenLinksCount {
   count: number;
 }
 
-// ── Raw fetch helper ──────────────────────────────────────────────────────────
-
 async function fetchProc<T>(proc: string): Promise<T> {
-  // Always call the Pages Function directly from the browser.
-  // The Pages Function is served at the same origin, so no CORS issues.
   const res = await fetch(`/api/trpc/${proc}?batch=1`, {
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${proc}`);
   const json: unknown = await res.json();
-  // Pages Function wraps in [{result:{data:...}}] when batch=1
   const item = Array.isArray(json) ? json[0] : json;
   const nested = (item as Record<string, unknown>)?.result;
   if (nested && typeof nested === "object" && "data" in (nested as object)) {
@@ -127,8 +107,6 @@ async function fetchProc<T>(proc: string): Promise<T> {
   }
   return (nested ?? item) as T;
 }
-
-// ── Mutation helper ───────────────────────────────────────────────────────────
 
 async function mutateProc<T>(proc: string): Promise<T> {
   const res = await fetch(`/api/trpc/${proc}?batch=1`, {
@@ -145,8 +123,6 @@ async function mutateProc<T>(proc: string): Promise<T> {
   }
   return (nested ?? item) as T;
 }
-
-// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export interface DashboardData {
   status: QuickStatus | null;
@@ -171,39 +147,28 @@ export interface DashboardActions {
 
 export function useDashboard(refreshInterval = 60_000) {
   const [data, setData] = useState<DashboardData>({
-    status: null,
-    analytics: null,
-    sentinel: null,
-    history: [],
-    scheduler: null,
-    alerts: [],
-    telegramConfig: null,
-    latencyTimeline: [],
-    securityLevel: null,
-    activeBrokenLinksCount: null,
+    status: null, analytics: null, sentinel: null, history: [],
+    scheduler: null, alerts: [], telegramConfig: null,
+    latencyTimeline: [], securityLevel: null, activeBrokenLinksCount: null,
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
   const isMounted = useRef(true);
+
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
   }, []);
 
-  const refresh = useCallback(async (showSpinner = false) => {
-    if (showSpinner) setRefreshing(true);
+  const refresh = useCallback(async (_showSpinner = false) => {
     try {
-      // Fast primary data first
       const [statusR, analyticsR, sentinelR] = await Promise.allSettled([
         fetchProc<QuickStatus>("monitor.quickStatus"),
         fetchProc<CfAnalytics>("monitor.cfAnalytics"),
         fetchProc<SentinelData>("wpSentinel.getV6Data"),
       ]);
-
       if (!isMounted.current) return;
-
       setData(prev => ({
         ...prev,
         status: statusR.status === "fulfilled" ? statusR.value : prev.status,
@@ -212,8 +177,6 @@ export function useDashboard(refreshInterval = 60_000) {
       }));
       setLoading(false);
       setLastUpdated(new Date());
-
-      // Secondary data (less critical, can be slow)
       const [historyR, schedulerR, alertsR, telegramR, latencyR, securityR, brokenR] =
         await Promise.allSettled([
           fetchProc<HistoryRecord[]>("monitor.history"),
@@ -224,9 +187,7 @@ export function useDashboard(refreshInterval = 60_000) {
           fetchProc<SecurityLevel>("monitor.securityLevel"),
           fetchProc<ActiveBrokenLinksCount>("monitor.activeBrokenLinksCount"),
         ]);
-
       if (!isMounted.current) return;
-
       setData(prev => ({
         ...prev,
         history: historyR.status === "fulfilled" ? (historyR.value ?? []) : prev.history,
@@ -242,7 +203,6 @@ export function useDashboard(refreshInterval = 60_000) {
     }
   }, []);
 
-  // Initial load + interval
   useEffect(() => {
     refresh();
     const timer = setInterval(refresh, refreshInterval);
@@ -250,12 +210,9 @@ export function useDashboard(refreshInterval = 60_000) {
   }, [refresh, refreshInterval]);
 
   const actions: DashboardActions = {
-    runCheck: () =>
-      mutateProc<QuickStatus & { alertsFired: unknown[]; autoFixApplied: boolean }>("monitor.runCheck"),
-    purgeCache: () =>
-      mutateProc<{ success: boolean; message: string }>("monitor.purgeCache"),
-    sendTestReport: () =>
-      mutateProc<{ success: boolean; messageId?: number; error?: string }>("monitor.sendTestReport"),
+    runCheck: () => mutateProc<QuickStatus & { alertsFired: unknown[]; autoFixApplied: boolean }>("monitor.runCheck"),
+    purgeCache: () => mutateProc<{ success: boolean; message: string }>("monitor.purgeCache"),
+    sendTestReport: () => mutateProc<{ success: boolean; messageId?: number; error?: string }>("monitor.sendTestReport"),
     refreshSentinel: async () => {
       const [sentinelR, latencyR] = await Promise.allSettled([
         fetchProc<SentinelData>("wpSentinel.getV6Data"),
