@@ -23,8 +23,8 @@ export interface CloudflareFunctionEnv {
   TG_CHAT_IDS?: string;
 }
 
-export const DEFAULT_BACKEND_ORIGIN = "http://35.196.168.113:3000";
-export const DEFAULT_TELEGRAM_CHAT_IDS = ["8741681815"] as const;
+export const DEFAULT_BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+export const DEFAULT_TELEGRAM_CHAT_IDS = ["8674647124"] as const;
 
 export const noStoreHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -49,16 +49,15 @@ export function normalizeTelegramChatIds(env: CloudflareFunctionEnv): string[] {
   const raw = firstPresent(
     env.NCR_TELEGRAM_CHAT_IDS,
     env.NCR_TELEGRAM_CHAT_ID,
-    env.TELEGRAM_CHAT_ID,
     env.TELEGRAM_CHAT_IDS,
+    env.TELEGRAM_CHAT_ID,
     env.TELEGRAM_AUTHORIZED_CHAT_IDS,
     env.TG_CHAT_IDS,
     env.TG_CHAT_ID,
     DEFAULT_TELEGRAM_CHAT_IDS.join(",")
   );
-  const activeIds = new Set(DEFAULT_TELEGRAM_CHAT_IDS);
-  const filteredIds = splitCommaSeparated(raw).filter(chatId => activeIds.has(chatId as (typeof DEFAULT_TELEGRAM_CHAT_IDS)[number]));
-  return Array.from(new Set(filteredIds.length ? filteredIds : DEFAULT_TELEGRAM_CHAT_IDS));
+  const ids = splitCommaSeparated(raw);
+  return Array.from(new Set(ids.length ? ids : DEFAULT_TELEGRAM_CHAT_IDS));
 }
 
 export function getTelegramBotToken(env: CloudflareFunctionEnv): string {
