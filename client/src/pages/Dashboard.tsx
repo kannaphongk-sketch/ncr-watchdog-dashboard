@@ -55,10 +55,15 @@ function asArray<T = never>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function toSafeString(value: unknown, fallback = ""): string {
+  const stringifiable = value as { toString?: () => string } | null | undefined;
+  return stringifiable?.toString?.() || fallback;
+}
+
 function parseRecipientList(value: unknown): string[] {
   const values = Array.isArray(value) ? value : typeof value === "string" || typeof value === "number" ? String(value).split(",") : [];
   return values
-    .map(recipient => String(recipient ?? "").trim())
+    .map(recipient => toSafeString(recipient).trim())
     .filter(Boolean);
 }
 
@@ -68,7 +73,6 @@ function getTelegramRecipients(config: unknown): string[] {
     ...parseRecipientList(record.chatIds),
     ...parseRecipientList(record.recipients),
     ...parseRecipientList(record.recipient),
-    ...parseRecipientList(import.meta.env.VITE_TELEGRAM_CHAT_IDS),
   ];
   const uniqueRecipients = Array.from(new Set(recipients));
   return uniqueRecipients.length ? uniqueRecipients : [...DEFAULT_TELEGRAM_CHAT_IDS];
@@ -1164,18 +1168,18 @@ export default function Dashboard() {
                 },
                 {
                   label: "Recent Alerts",
-                  value: alerts.length.toString(),
+                  value: toSafeString(alerts.length, "0"),
                   accent: alerts.length > 0 ? "text-amber-400" : "text-emerald-400",
                 },
                 {
                   label: "Auto-Fixes Applied",
-                  value: alerts.filter((a) => a.autoFixApplied).length.toString(),
+                  value: toSafeString(alerts.filter((a) => a.autoFixApplied).length, "0"),
                   accent: "text-blue-400",
                 },
                 {
                   label: "Broken Links (Active)",
                   value: Number.isFinite(activeBrokenLinksCount)
-                    ? activeBrokenLinksCount.toString()
+                    ? toSafeString(activeBrokenLinksCount, "0")
                     : "—",
                   accent: activeBrokenLinksCount > 5
                     ? "text-red-400"
