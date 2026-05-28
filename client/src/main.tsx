@@ -65,6 +65,7 @@ const isCrossOriginApi = Boolean(
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
+      transformer: superjson,
       url: trpcUrl,
       async fetch(input, init) {
         const headers = new Headers(init?.headers);

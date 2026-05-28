@@ -1,3 +1,4 @@
+import superjson from "superjson";
 import type { CloudflareFunctionEnv } from "../lib/cloudflare-utils";
 import { applyCors, corsHeaders, proxyToBackend, getTelegramBotToken, normalizeTelegramChatIds, noStoreHeaders } from "../lib/cloudflare-utils";
 
@@ -23,9 +24,11 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
       configured: chatIds.length > 0,
       botConfigured: Boolean(botToken),
       chatIds,
+      recipients: chatIds.join(","),
       status: "configured"
     };
-    const response = isBatch ? [{ result: { data } }] : { result: { data } };
+    const serializedData = superjson.serialize(data);
+    const response = isBatch ? [{ result: { data: serializedData } }] : { result: { data: serializedData } };
     return applyCors(
       new Response(JSON.stringify(response), {
         status: 200,
