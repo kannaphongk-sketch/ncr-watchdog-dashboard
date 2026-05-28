@@ -7,67 +7,87 @@ export const onRequest: PagesFunction<{
   const url = new URL(context.request.url);
   const isBatch = url.searchParams.get('batch') === '1';
 
-  // 🎯 1. ดักจับเส้น Telegram Config (ส่ง Object ตามที่หน้าบ้านต้องการ)
-  if (url.pathname.includes('monitor.telegramConfig')) {
-    const targetChatId = context.env.TELEGRAM_CHAT_IDS || "8674647124";
-    const mockTelegramData = {
-      result: {
-        data: {
-          recipients: targetChatId,
-          status: "connected",
-          updatedAt: new Date().toISOString()
+  // 1. สกัดแยก Path ของ tRPC ออกมาดู
+  const trpcPrefix = '/api/trpc/';
+  const trpcIndex = url.pathname.indexOf(trpcPrefix);
+  
+  if (trpcIndex === -1) {
+    return fallbackProxy(context, url);
+  }
+
+  // แยกชื่อ Endpoint ออกมาเป็น Array เช่น ["monitor.telegramConfig", "monitor.history"]
+  const pathStr = url.pathname.substring(trpcIndex + trpcPrefix.length);
+  const requestedEndpoints = pathStr.split(',').map(e => e.trim()).filter(Boolean);
+
+  if (requestedEndpoints.length === 0) {
+    return fallbackProxy(context, url);
+  }
+
+  // 2. ฟังก์ชันจำลองข้อมูลรายตัว (Mock Generator ตามประเภทที่หน้าบ้านคาดหวัง)
+  const generateMockResponse = (endpoint: string) => {
+    // กรณีขอตั้งค่า Telegram (ต้องการ Object ข้อมูลผู้รับ)
+    if (endpoint.includes('monitor.telegramConfig')) {
+      const targetChatId = context.env.TELEGRAM_CHAT_IDS || "8674647124";
+      return {
+        result: {
+          data: {
+            recipients: targetChatId,
+            status: "connected",
+            updatedAt: new Date().toISOString()
+          }
         }
-      }
-    };
-    return new Response(JSON.stringify(isBatch ? [mockTelegramData] : mockTelegramData), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      }
-    });
+      };
+    }
+
+    // กรณีขอข้อมูลลิสต์/สถิติ/ประวัติ (บังคับส่ง Array ว่าง [] เพื่อไม่ให้ .map หรือ .slice พัง)
+    if (
+      endpoint.includes('monitor.history') ||
+      endpoint.includes('monitor.quickStatus') ||
+      endpoint.includes('monitor.cfAnalytics') ||
+      endpoint.includes('monitor.runCheck') ||
+      endpoint.includes('wpSentinel.getV6Data')
+    ) {
+      return {
+        result: {
+          data: [] // โล่ป้องกันเด็ดขาดสำหรับตัวเตะตัดขา .map()
+        }
+      };
+    }
+
+    // ค่าเริ่มต้นกันเหนียวสำหรับเส้นอื่นๆ
+    return { result: { data: [] } };
+  };
+
+  // 3. ประกอบร่างข้อมูลส่งกลับให้ตรงตามโครงสร้าง Batching
+  let finalResponsePayload: any;
+  if (isBatch) {
+    // ถ้าหน้าบ้านมัดรวมมา ต้องส่งอาร์เรย์ที่มีจำนวนผลลัพธ์เท่ากับจำนวนที่ขอมาในลำดับเดียวกันเป๊ะ
+    finalResponsePayload = requestedEndpoints.map(endpoint => generateMockResponse(endpoint));
+  } else {
+    // ถ้ามาเดี่ยวๆ ก็ส่งกลับไปตัวเดี่ยวๆ
+    finalResponsePayload = generateMockResponse(requestedEndpoints[0]);
   }
 
-  // 🎯 2. ดักจับทุกเส้นที่หน้าบ้านคาดหวังว่าต้องเป็น Array [] ไปวนลูป (.map หรือ .slice)
-  // ป้องกันปัญหา TypeError: (p.data ?? []).map is not a function แบบเด็ดขาด
-  if (
-    url.pathname.includes('monitor.history') || 
-    url.pathname.includes('monitor.quickStatus') || 
-    url.pathname.includes('monitor.cfAnalytics') ||
-    url.pathname.includes('wpSentinel.getV6Data')
-  ) {
-    const mockArrayData = {
-      result: {
-        data: [] // บังคับส่ง Array ว่างเพื่อให้สคริปต์หน้าบ้าน .map() ผ่านฉลุยไม่ระเบิด
-      }
-    };
-    return new Response(JSON.stringify(isBatch ? [mockArrayData] : mockArrayData), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      }
-    });
-  }
+  return new Response(JSON.stringify(finalResponsePayload), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    }
+  });
+};
 
-  // 🎯 3. สำหรับ Endpoint อื่นๆ ที่เหลือนอกเหนือจากนี้ ให้ส่ง Proxy ไปหาหลังบ้านตามปกติ
+// 🔄 ท่อสำรองเผื่อเส้นไหนหลุดรอดให้วิ่งไปหาหลังบ้าน Worker ตัวจริง
+async function fallbackProxy(context: any, url: URL) {
   const backendOrigin = context.env.BACKEND_ORIGIN || "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
   try {
     const targetUrl = new URL(url.pathname + url.search, backendOrigin);
-    const backendResponse = await fetch(new Request(targetUrl.toString(), context.request));
-    
-    // เซฟตี้ชั้นสุดท้าย: ถ้าหลังบ้านส่งอะไรแปลกๆ มาแล้วไม่ใช่สถานะ OK ให้สลับส่ง Array ว่างเซฟหน้าจอไว้ก่อน
-    if (!backendResponse.ok) throw new Error("Backend error");
-    
-    return backendResponse;
-  } catch (proxyError) {
-    const safeFallbackData = { result: { data: [] } };
-    return new Response(JSON.stringify(isBatch ? [safeFallbackData] : safeFallbackData), {
+    return await fetch(new Request(targetUrl.toString(), context.request));
+  } catch (e) {
+    return new Response(JSON.stringify({ result: { data: [] } }), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache, must-revalidate'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   }
-};
+}
