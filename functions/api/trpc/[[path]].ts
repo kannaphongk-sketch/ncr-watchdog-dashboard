@@ -193,8 +193,8 @@ export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => 
   }
 
   if (url.pathname.includes("/api/trpc/")) {
-  return applyCors(new Response(JSON.stringify(toTrpcResponse([], isBatch)), { status: 200, headers }), context.request, context.env);
-
+    return applyCors(new Response(JSON.stringify(toTrpcResponse([], isBatch)), { status: 200, headers }), context.request, context.env);
+  }  // ← เพิ่ม } ตรงนี้
 
   const suffix = trpcPath(context.params);
   return proxyToBackend(context, `/api/trpc${suffix ? `/${suffix}` : ""}`);
