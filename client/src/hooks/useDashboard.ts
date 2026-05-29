@@ -94,9 +94,10 @@ export interface ActiveBrokenLinksCount {
   count: number;
 }
 
+const BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+
 async function fetchProc<T>(proc: string): Promise<T> {
-  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
-  const res = await fetch(`${base}/api/trpc/${proc}?batch=1`, {
+  const res = await fetch(`${BACKEND_ORIGIN}/api/trpc/${proc}?batch=1`, {
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${proc}`);
@@ -110,8 +111,7 @@ async function fetchProc<T>(proc: string): Promise<T> {
 }
 
 async function mutateProc<T>(proc: string): Promise<T> {
-  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
-  const res = await fetch(`${base}/api/trpc/${proc}?batch=1`, {
+  const res = await fetch(`${BACKEND_ORIGIN}/api/trpc/${proc}?batch=1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
