@@ -110,7 +110,8 @@ async function fetchProc<T>(proc: string): Promise<T> {
 }
 
 async function mutateProc<T>(proc: string): Promise<T> {
-  const res = await fetch(`/api/trpc/${proc}?batch=1`, {
+  const base = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+  const res = await fetch(`${base}/api/trpc/${proc}?batch=1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
