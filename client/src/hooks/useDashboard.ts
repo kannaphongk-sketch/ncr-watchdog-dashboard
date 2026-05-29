@@ -95,7 +95,8 @@ export interface ActiveBrokenLinksCount {
 }
 
 async function fetchProc<T>(proc: string): Promise<T> {
-  const res = await fetch(`/api/trpc/${proc}?batch=1`, {
+  const BACKEND = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+  const res = await fetch(`${BACKEND}/api/trpc/${proc}?batch=1`, {
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${proc}`);
