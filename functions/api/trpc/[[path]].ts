@@ -1,3 +1,23 @@
+import type { CloudflareFunctionEnv } from "../../lib/cloudflare-utils";
+import { applyCors, corsHeaders, proxyToBackend, getTelegramBotToken, normalizeTelegramChatIds, noStoreHeaders } from "../../lib/cloudflare-utils";
+
+function toTrpcResult(data: unknown) {
+  return { result: { data } };
+}
+
+async function handleQuickStatus(env: CloudflareFunctionEnv) {
+  const targetUrl = env.CTO_MONITOR_TARGET_URL || "https://nakornchiangrainews.com";
+  const start = Date.now();
+  try {
+    const res = await fetch(targetUrl, { method: "GET", redirect: "follow" });
+    const ttfbMs = Date.now() - start;
+    const isUp = res.status >= 200 && res.status < 500;
+    return { httpCode: res.status, ttfbMs, isUp, cacheStatus: res.headers.get("cf-cache-status") ?? "UNKNOWN", cfRay: res.headers.get("cf-ray") ?? "", uptimePercent: isUp ? 100 : 0, avgTtfbMs: ttfbMs, checkedAt: new Date().toISOString() };
+  } catch (error) {
+    return { httpCode: 0, ttfbMs: Date.now() - start, isUp: false, cacheStatus: "ERROR", cfRay: "", uptimePercent: 0, avgTtfbMs: 0, checkedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function handleCfAnalytics(env: CloudflareFunctionEnv) {
   const zoneId = env.CLOUDFLARE_ZONE_ID;
   const apiToken = env.CLOUDFLARE_API_TOKEN;
@@ -61,6 +81,29 @@ async function handleCfAnalytics(env: CloudflareFunctionEnv) {
   }
 }
 
+async function handlePurgeCache(env: CloudflareFunctionEnv) {
+  const zoneId = env.CLOUDFLARE_ZONE_ID;
+  const apiToken = env.CLOUDFLARE_API_TOKEN;
+  if (!zoneId || !apiToken) return { success: false, message: "Missing credentials" };
+  try {
+    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, { method: "POST", headers: { "Authorization": `Bearer ${apiToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ purge_everything: true }) });
+    const json = await res.json() as any;
+    return { success: json.success, message: json.success ? "Cache purged" : "Failed" };
+  } catch { return { success: false, message: "Error" }; }
+}
+
+async function handleSendTestReport(env: CloudflareFunctionEnv) {
+  const botToken = getTelegramBotToken(env);
+  const chatIds = normalizeTelegramChatIds(env);
+  if (!botToken || chatIds.length === 0) return { success: false, error: "Missing credentials" };
+  const text = `✅ <b>NCR Watchdog — Test Report</b>\n🕐 ${new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })} (Bangkok)\n\nระบบทำงานได้ปกติครับ ✨\n\n🔗 https://ncr-watchdog-dashboard.pages.dev`;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chatIds[0], text, parse_mode: "HTML" }) });
+    const json = await res.json() as any;
+    return { success: json.ok, messageId: json.result?.message_id, error: json.description };
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+}
+
 async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promise<unknown> {
   if (proc.includes("monitor.telegramConfig")) {
     const chatIds = normalizeTelegramChatIds(env);
@@ -81,7 +124,43 @@ async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promis
   if (proc.includes("monitor.cacheDiagnostic")) return null;
   if (proc.includes("monitor.cacheHistory")) return [];
   if (proc.includes("monitor.summary")) return {};
+  if (proc.includes("monitor.approvePurge")) return { success: false, message: "not implemented" };
+  if (proc.includes("monitor.markFixed")) return {};
   if (proc.includes("wpSentinel.getV6Data")) return { operatingMode: "Autonomous Caretaker Active", wpStatus: "ok", wpHealth: "stable", dbLatencyMs: 0, memoryUsageMb: 0, memoryStatus: "optimal", diskFreeGb: 0, diskSystemManaged: true, optimizedImages: 0, totalImages: 0, verified404: 0, cacheStatusLabel: "Cache Status: Checking", statusCritical: false, healthAlert: false, lastSystemCheck: null };
   if (proc.includes("wpSentinel.getLatencyTimeline")) return [];
   return [];
 }
+
+export const onRequest: PagesFunction<CloudflareFunctionEnv> = async context => {
+  if (context.request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(context.request, context.env) });
+  }
+  if (!["GET", "POST"].includes(context.request.method.toUpperCase())) {
+    return applyCors(new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { "Content-Type": "application/json" } }), context.request, context.env);
+  }
+
+  const url = new URL(context.request.url);
+  const isBatch = url.searchParams.has("batch");
+  const headers = { "Content-Type": "application/json", ...noStoreHeaders };
+
+  const pathSegment = url.pathname.split("/api/trpc/")[1] || "";
+  const procedures = pathSegment.split(",").map(p => p.trim()).filter(Boolean);
+
+  if (procedures.length > 1) {
+    const results = await Promise.all(procedures.map(proc => handleProcedure(proc, context.env)));
+    const response = results.map(data => toTrpcResult(data));
+    return applyCors(new Response(JSON.stringify(response), { status: 200, headers }), context.request, context.env);
+  }
+
+  const proc = procedures[0] || "";
+  const data = await handleProcedure(proc, context.env);
+
+  if (proc) {
+    const response = isBatch ? [toTrpcResult(data)] : toTrpcResult(data);
+    return applyCors(new Response(JSON.stringify(response), { status: 200, headers }), context.request, context.env);
+  }
+
+  const rawPath = context.params.path;
+  const suffix = Array.isArray(rawPath) ? rawPath.join("/") : rawPath ?? "";
+  return proxyToBackend(context, `/api/trpc${suffix ? `/${suffix}` : ""}`);
+};
