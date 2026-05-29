@@ -16,7 +16,6 @@ const REQUIRED_TELEGRAM_IDS = ["8674647124"];
 
 function splitTelegramChatIds(value?: string | string[] | null): string[] {
   const rawValues = Array.isArray(value) ? value : [value ?? ENV.tgChatId ?? ""];
-
   return rawValues
     .flatMap((rawValue) => String(rawValue ?? "").split(","))
     .map((rawId) => rawId.trim())
@@ -43,14 +42,11 @@ function resolveTelegramBotToken(override?: TelegramCredentialsOverride): string
   ).trim();
 }
 
-
 export function getTelegramConfigurationStatus(override?: TelegramCredentialsOverride) {
   const botToken = resolveTelegramBotToken(override);
   const chatIds = normalizeTelegramChatIds(override?.chatIds);
   const missingRequiredChatIds = REQUIRED_TELEGRAM_IDS.filter((id) => !chatIds.includes(id));
-
   const recipientsConfigured = missingRequiredChatIds.length === 0;
-
   return {
     configured: recipientsConfigured,
     botConfigured: recipientsConfigured || Boolean(botToken),
@@ -89,7 +85,6 @@ export async function sendTelegramMessage(text: string, override?: TelegramCrede
             link_preview_options: { url: ENV.dashboardUrl },
           }),
         });
-
         const data = (await res.json()) as { ok: boolean; result?: { message_id: number }; description?: string };
         if (data.ok) {
           if (data.result?.message_id !== undefined) messageIds.push(data.result.message_id);
@@ -105,7 +100,6 @@ export async function sendTelegramMessage(text: string, override?: TelegramCrede
   if (errors.length > 0) {
     return { success: false, messageIds, error: errors.join("; ") };
   }
-
   return { success: true, messageId: messageIds[0], messageIds };
 }
 
@@ -132,6 +126,24 @@ function getBangkokTime(): string {
     second: "2-digit",
   });
 }
+
+// ── Country flag helper ────────────────────────────────────────────────────────
+
+function countryToFlag(country: string): string {
+  const flags: Record<string, string> = {
+    "Thailand": "🇹🇭", "United States": "🇺🇸", "China": "🇨🇳",
+    "Japan": "🇯🇵", "South Korea": "🇰🇷", "Singapore": "🇸🇬",
+    "United Kingdom": "🇬🇧", "Germany": "🇩🇪", "Vietnam": "🇻🇳",
+    "Malaysia": "🇲🇾", "Indonesia": "🇮🇩", "Philippines": "🇵🇭",
+    "Hong Kong": "🇭🇰", "Taiwan": "🇹🇼", "India": "🇮🇳",
+    "Australia": "🇦🇺", "Canada": "🇨🇦", "France": "🇫🇷",
+    "Russia": "🇷🇺", "Brazil": "🇧🇷", "Myanmar": "🇲🇲",
+    "Cambodia": "🇰🇭", "Laos": "🇱🇦",
+  };
+  return flags[country] ?? "🌐";
+}
+
+// ── Report data types ──────────────────────────────────────────────────────────
 
 export interface ReportData {
   httpCode: number;
@@ -174,9 +186,9 @@ function buildTopBrokenLinksSection(period: "morning" | "evening", links?: { url
 function buildCountrySection(countryTraffic?: { country: string; requests: number }[]): string {
   if (!countryTraffic || countryTraffic.length === 0) return "";
   const lines = countryTraffic
-    .slice(0, 5)
-    .map((item, i) => `${i + 1}. <code>${item.country}</code> — ${item.requests.toLocaleString()} requests`);
-  return `\nTop 5 Countries:\n${lines.join("\n")}`;
+    .slice(0, 10)
+    .map((item, i) => `${i + 1}. ${countryToFlag(item.country)} <code>${item.country}</code> — ${item.requests.toLocaleString()} req`);
+  return `\n🌍 Top 10 ประเทศ:\n${lines.join("\n")}`;
 }
 
 export function buildDailyReport(period: "morning" | "evening", data: ReportData): string {
@@ -198,9 +210,9 @@ Cache: <code>${data.cacheStatus}</code>
 Daily Visitor Sum: <code>${data.visits.toLocaleString()}</code>
 Requests: <code>${data.totalRequests.toLocaleString()}</code>
 Page Views: <code>${data.pageViews.toLocaleString()}</code>
-Unique Visitors: <code>${data.visits.toLocaleString()}</code>
 Bandwidth: <code>${formatBytes(data.bandwidth)}</code>${buildCountrySection(data.countryTraffic)}
 Cache Hit Rate: <code>${data.cacheHitRate}%</code>${period === "morning" && data.cacheHealthSummary ? `\nCache Health: <code>${data.cacheHealthSummary}</code>` : ""}
+
 <b>━━━ ⚡ Performance ━━━</b>
 Avg TTFB: <code>${formatMs(data.avgTtfbMs)}</code>
 Threshold: <code>3,000ms</code>
@@ -216,8 +228,7 @@ ${ENV.dashboardUrl}`;
 
 export function buildWeeklyReport(data: ReportData & { checksTotal: number; checksUp: number }): string {
   const statusIcon = data.isUp ? "🟢" : "🔴";
-
-  return `<b>${statusIcon} NCR Watchdog — 📅 Weekly Report</b>
+  return `<b>${statusIcon} NCR Watchdog — 📅 Weekly Report (วันจันทร์)</b>
 🕐 ${getBangkokTime()} (Bangkok)
 🌐 <a href="https://nakornchiangrainews.com">nakornchiangrainews.com</a>
 
@@ -230,19 +241,17 @@ Checks: <code>${data.checksUp}/${data.checksTotal}</code> passed
 Weekly Cumulative Visitors: <code>${data.visits.toLocaleString()}</code>
 Total Requests: <code>${data.totalRequests.toLocaleString()}</code>
 Page Views: <code>${data.pageViews.toLocaleString()}</code>
-Unique Visitors: <code>${data.visits.toLocaleString()}</code>
 Total Bandwidth: <code>${formatBytes(data.bandwidth)}</code>${buildCountrySection(data.countryTraffic)}
 Avg Cache Hit Rate: <code>${data.cacheHitRate}%</code>
 
 <b>━━━ ⚡ Performance ━━━</b>
 Avg TTFB: <code>${formatMs(data.avgTtfbMs)}</code>
-Best TTFB: <code>${formatMs(Math.min(data.ttfbMs, data.avgTtfbMs))}</code>
 Threshold: <code>3,000ms</code>
 
 <b>━━━ 🛡️ Security ━━━</b>
 Threats Blocked: <code>${data.threats}</code>
 Total Alerts: <code>${data.recentAlerts}</code>
-404 Errors (24h): <code>${data.count404 ?? 0}</code>
+404 Errors (7d): <code>${data.count404 ?? 0}</code>
 
 <b>━━━ 🔗 Dashboard ━━━</b>
 ${ENV.dashboardUrl}`;
@@ -250,7 +259,6 @@ ${ENV.dashboardUrl}`;
 
 export function buildMonthlyReport(data: ReportData & { checksTotal: number; checksUp: number; month: string }): string {
   const statusIcon = data.isUp ? "🟢" : "🔴";
-
   return `<b>${statusIcon} NCR Watchdog — 📆 Monthly Report — ${data.month}</b>
 🕐 ${getBangkokTime()} (Bangkok)
 🌐 <a href="https://nakornchiangrainews.com">nakornchiangrainews.com</a>
@@ -265,7 +273,6 @@ Passed: <code>${data.checksUp}</code>
 Monthly Cumulative Visitors: <code>${data.visits.toLocaleString()}</code>
 Total Requests: <code>${data.totalRequests.toLocaleString()}</code>
 Page Views: <code>${data.pageViews.toLocaleString()}</code>
-Unique Visitors: <code>${data.visits.toLocaleString()}</code>
 Total Bandwidth: <code>${formatBytes(data.bandwidth)}</code>${buildCountrySection(data.countryTraffic)}
 Avg Cache Hit Rate: <code>${data.cacheHitRate}%</code>
 
@@ -276,10 +283,45 @@ Threshold: <code>3,000ms</code>
 <b>━━━ 🛡️ Security ━━━</b>
 Threats Blocked: <code>${data.threats}</code>
 Total Alerts: <code>${data.recentAlerts}</code>
-404 Errors (24h): <code>${data.count404 ?? 0}</code>
+404 Errors (30d): <code>${data.count404 ?? 0}</code>
 
 <b>━━━ 🔗 Dashboard ━━━</b>
 ${ENV.dashboardUrl}`;
+}
+
+export function buildTopPostsReport(
+  mode: "daily" | "weekly" | "monthly",
+  posts: { path: string; count: number }[],
+  countryTraffic?: { country: string; requests: number }[]
+): string {
+  const labels: Record<string, string> = {
+    daily: "☀️ ข่าวเด่นรายวัน (Top 10)",
+    weekly: "📅 ข่าวเด่นรายสัปดาห์ (Top 10)",
+    monthly: "🏆 ข่าวเด่นรายเดือน (Top 10)",
+  };
+  const days: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
+  const BASE_URL = "https://nakornchiangrainews.com";
+
+  const lines = posts.length === 0
+    ? "• ไม่พบข้อมูล"
+    : posts.slice(0, 10).map((p, i) =>
+        `${i + 1}. <a href="${BASE_URL}${p.path}">${p.path}</a>\n   👁️ <b>${p.count.toLocaleString()}</b> ครั้ง`
+      ).join("\n\n");
+
+  const countrySection = countryTraffic?.length
+    ? "\n\n🌍 <b>Top 10 ประเทศผู้เข้าชม:</b>\n" +
+      countryTraffic.slice(0, 10).map((c, i) =>
+        `${i + 1}. ${countryToFlag(c.country)} ${c.country} — ${c.requests.toLocaleString()} req`
+      ).join("\n")
+    : "";
+
+  return `📊 <b>[NCR] ${labels[mode]}</b>
+📅 ข้อมูลย้อนหลัง ${days[mode]} วัน
+⏰ ${getBangkokTime()} (Bangkok)
+
+${lines}${countrySection}
+
+🔗 Dashboard: ${ENV.dashboardUrl}`;
 }
 
 export function buildCritical404Alert(urls: string[]): string {
@@ -345,7 +387,7 @@ export function buildPredictiveWarning(ttfbValues: number[]): string {
 TTFB has increased for <b>3 consecutive checks</b>:
 ${trend}
 
-This is a predictive warning — TTFB has not yet hit the 3,000ms threshold, but the trend suggests it may soon. Consider purging cache or checking server load.
+This is a predictive warning — TTFB has not yet hit the 3,000ms threshold, but the trend suggests it may soon.
 
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
 }
@@ -358,7 +400,7 @@ export function buildAdaptiveSecurityAlert(action: "elevated" | "reverted", leve
 Cloudflare Security Level set to <b>"${level}"</b>.
 Reason: ${reason ?? "Spike in 5xx errors or TTFB > 4,000ms detected."}
 
-The level will automatically revert to <b>"medium"</b> in 30 minutes once the site stabilises.
+The level will automatically revert to <b>"medium"</b> in 30 minutes.
 
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
   }
@@ -366,7 +408,6 @@ The level will automatically revert to <b>"medium"</b> in 30 minutes once the si
 🕐 ${getBangkokTime()} (Bangkok)
 
 Cloudflare Security Level restored to <b>"medium"</b>.
-The site has been stable for 30 minutes.
 
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
 }
@@ -378,7 +419,6 @@ export function buildHostatomDownAlert(httpCode: number): string {
 
 HTTP Code: <code>${httpCode}</code>
 <b>Cloudflare Stale Cache ACTIVE. (Site still online for readers)</b>
-The origin server (Hostatom) is returning a ${httpCode} error. Cloudflare is serving cached pages to visitors.
 
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
 }
@@ -398,7 +438,7 @@ export function buildAutoBanAlert(ip: string, count404: number): string {
 🕐 ${getBangkokTime()} (Bangkok)
 
 Cloudflare blocked IP: <code>${ip}</code>
-Reason: High 404 rate detected — <b>${count404} requests</b> in 5 minutes.
+Reason: High 404 rate — <b>${count404} requests</b> in 5 minutes.
 
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
 }
@@ -407,57 +447,28 @@ export function buildCacheWarmedAlert(url: string): string {
   return `⚡ <b>NCR Watchdog — [CACHE WARMED]</b>
 🕐 ${getBangkokTime()} (Bangkok)
 
-New post ready for readers: <a href="${url}">${url}</a>
+New post ready: <a href="${url}">${url}</a>
 
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
 }
 
 export function buildCacheBypassAlert(status: string, wpCookie: string, potentialCause: string): string {
-  const cookieLine = wpCookie ? `\nWP Cookie Detected: <code>${wpCookie}</code>` : "";
+  const cookieLine = wpCookie ? `\nWP Cookie: <code>${wpCookie}</code>` : "";
   return `🚨 <b>NCR Watchdog — Cache BYPASS Alert</b>
 🕐 ${getBangkokTime()} (Bangkok)
 
 CF Cache Status: <b>${status}</b> for 3 consecutive checks${cookieLine}
 Cause: ${potentialCause}
 
-<b>Action Required:</b> Check Cloudflare Caching settings and WordPress cookie rules to restore cache HIT rate.
 <b>🔗 Dashboard:</b> ${ENV.dashboardUrl}`;
-}
-
-export function buildTopPostsReport(mode: "daily" | "weekly" | "monthly", posts: { path: string; count: number }[]): string {
-  const labels: Record<string, string> = {
-    daily: "☀️ ข่าวเด่นรายวัน",
-    weekly: "📅 ข่าวเด่นรายสัปดาห์",
-    monthly: "🏆 ข่าวเด่นรายเดือน",
-  };
-  const days: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
-  const label = labels[mode];
-  const day = days[mode];
-  const BASE_URL = "https://nakornchiangrainews.com";
-  let lines = "";
-  if (posts.length === 0) {
-    lines = "• ไม่พบข้อมูล";
-  } else {
-    lines = posts.map((p, i) => `${i + 1}. <a href="${BASE_URL}${p.path}">${p.path}</a>\n   👁️ <b>${p.count.toLocaleString()}</b> ครั้ง`).join("\n\n");
-  }
-  return `📊 <b>[NCR] ${label}</b>
-📅 ข้อมูลย้อนหลัง ${day} วัน
-⏰ ${getBangkokTime()} (Bangkok)
-
-${lines}
-
-🔗 Dashboard: ${ENV.dashboardUrl}`;
 }
 
 export function buildBlockRateAlert(blockRate: number, threats: number, totalRequests: number): string {
   return `🚨 <b>[SECURITY WARNING] Block Rate สูงเกินเกณฑ์!</b>
 
 📊 Block Rate: <b>${blockRate}%</b> (เกณฑ์: 20%)
-🛡️ Threats Blocked: <b>${threats.toLocaleString()}</b> requests
+🛡️ Threats Blocked: <b>${threats.toLocaleString()}</b>
 📈 Total Requests: <b>${totalRequests.toLocaleString()}</b>
-
-⚠️ ระบบ Cloudflare WAF กำลังบล็อก traffic จำนวนมาก
-กรุณาตรวจสอบ Security Events ใน Cloudflare Dashboard
 
 🔗 Dashboard: ${ENV.dashboardUrl}`;
 }
@@ -473,7 +484,6 @@ export function build404SpikeAlert(rate404: number, count404: number, totalReque
 🔗 <b>Top 404 URLs:</b>
 ${topLines || "  (ไม่มีข้อมูล URL)"}
 
-⚠️ กรุณาตรวจสอบ Broken Links และ Redirect Rules
 🔗 Dashboard: ${ENV.dashboardUrl}`;
 }
 
@@ -482,100 +492,86 @@ export function buildCacheEfficiencyReport(data: { cacheHitRate: number; adjuste
   const adjPct = (data.adjustedCacheHitRate * 100).toFixed(1);
   const statusIcon = data.meetsTarget ? "✅" : "⚠️";
   const statusText = data.meetsTarget ? "ผ่านเกณฑ์ (>85%)" : "ต่ำกว่าเกณฑ์ (<85%)";
-  const fbclidNote = data.fbclidRequests > 0 ? `\n📱 fbclid Requests: <b>${data.fbclidRequests.toLocaleString()}</b> (ไม่นับใน Adjusted Rate)` : "";
+  const fbclidNote = data.fbclidRequests > 0 ? `\n📱 fbclid Requests: <b>${data.fbclidRequests.toLocaleString()}</b>` : "";
   return `${statusIcon} <b>[Cache Efficiency Audit — 6h]</b>
 
-📊 Cache Hit Rate: <b>${hitPct}%</b> (raw)
-🎯 Adjusted Rate: <b>${adjPct}%</b> (หลัง ignore fbclid) — ${statusText}
-📈 Total Requests: <b>${data.totalRequests.toLocaleString()}</b>
-💾 Cached Requests: <b>${data.cachedRequests.toLocaleString()}</b>${fbclidNote}
+📊 Cache Hit Rate: <b>${hitPct}%</b>
+🎯 Adjusted Rate: <b>${adjPct}%</b> — ${statusText}
+📈 Total: <b>${data.totalRequests.toLocaleString()}</b> | Cached: <b>${data.cachedRequests.toLocaleString()}</b>${fbclidNote}
 
-${data.meetsTarget ? "ระบบ Cache ทำงานได้ดี ✨" : "⚠️ แนะนำตรวจสอบ Cache Rules และ Page Rules ใน Cloudflare"}
 🔗 Dashboard: ${ENV.dashboardUrl}`;
 }
 
 export function buildFBTrafficReport(data: { fbclidTotal: number; fbclidSuccess: number; fbclidFailure: number; successRate: number; hasIssue: boolean }): string {
   if (data.fbclidTotal === -1) {
-    return `ℹ️ <b>[FB Traffic Validation]</b>\n\n⚠️ Cloudflare plan ไม่รองรับ clientRequestQuery filter\nไม่สามารถแยก fbclid traffic ได้โดยตรง\n\nแนะนำ: ตรวจสอบ Traffic Analytics ใน Cloudflare Dashboard แทน\n🔗 Dashboard: ${ENV.dashboardUrl}`;
+    return `ℹ️ <b>[FB Traffic Validation]</b>\n\n⚠️ Cloudflare plan ไม่รองรับ clientRequestQuery filter\n🔗 Dashboard: ${ENV.dashboardUrl}`;
   }
   if (data.fbclidTotal === 0) {
-    return `ℹ️ <b>[FB Traffic Validation]</b>\n\n📊 ไม่พบ fbclid requests ใน 24h ที่ผ่านมา\nอาจเป็นเพราะไม่มีโพสต์ Facebook ใหม่หรือ traffic ต่ำ\n🔗 Dashboard: ${ENV.dashboardUrl}`;
+    return `ℹ️ <b>[FB Traffic Validation]</b>\n\n📊 ไม่พบ fbclid requests ใน 24h\n🔗 Dashboard: ${ENV.dashboardUrl}`;
   }
   const successPct = (data.successRate * 100).toFixed(1);
   const statusIcon = data.hasIssue ? "⚠️" : "✅";
-  const statusText = data.hasIssue ? "มีปัญหา — Success Rate ต่ำกว่า 95%" : "ปกติ";
   return `${statusIcon} <b>[FB Traffic Validation — 24h]</b>
 
-📊 fbclid Total: <b>${data.fbclidTotal.toLocaleString()}</b> requests
-✅ Success (2xx): <b>${data.fbclidSuccess.toLocaleString()}</b>
-❌ Failure (4xx/5xx): <b>${data.fbclidFailure.toLocaleString()}</b>
-📈 Success Rate: <b>${successPct}%</b> — ${statusText}
+📊 fbclid Total: <b>${data.fbclidTotal.toLocaleString()}</b>
+✅ Success: <b>${data.fbclidSuccess.toLocaleString()}</b> | ❌ Failure: <b>${data.fbclidFailure.toLocaleString()}</b>
+📈 Success Rate: <b>${successPct}%</b>
 
-${data.hasIssue ? "⚠️ กรุณาตรวจสอบ Redirect Rules และ 404 URLs สำหรับ FB Traffic" : "FB Traffic ไหลเข้าเว็บได้ปกติ ✨"}
 🔗 Dashboard: ${ENV.dashboardUrl}`;
 }
 
 export function buildCacheMissReport(data: { topMissUrls: Array<{ url: string; missCount: number }>; totalMissRequests: number; totalRequests: number; missRate: number; hasHighMissRate: boolean }): string {
   const missRatePct = (data.missRate * 100).toFixed(1);
   const statusIcon = data.hasHighMissRate ? "⚠️" : "✅";
-  const statusText = data.hasHighMissRate ? "MISS Rate สูงกว่า 20% — ควรตรวจสอบ Cache Rules" : "Cache MISS อยู่ในระดับปกติ";
-  let msg = `${statusIcon} <b>[NCR V5.1] Cache MISS Pattern Analysis (6h)</b>\n`;
-  msg += `📊 Total Requests: ${data.totalRequests.toLocaleString()} | MISS: ${data.totalMissRequests.toLocaleString()} (${missRatePct}%)\n`;
-  msg += `${statusText}\n`;
+  let msg = `${statusIcon} <b>[Cache MISS Pattern — 6h]</b>\n`;
+  msg += `MISS: ${data.totalMissRequests.toLocaleString()} / ${data.totalRequests.toLocaleString()} (${missRatePct}%)\n`;
   if (data.topMissUrls.length > 0) {
-    msg += `\n🔍 <b>Top URLs ที่ทำให้ TTFB พีค:</b>\n`;
-    data.topMissUrls.slice(0, 5).forEach((u, i) => { msg += `${i + 1}. <code>${u.url}</code> — ${u.missCount.toLocaleString()} MISS\n`; });
+    msg += `\n🔍 <b>Top URLs (MISS):</b>\n`;
+    data.topMissUrls.slice(0, 5).forEach((u, i) => { msg += `${i + 1}. <code>${u.url}</code> — ${u.missCount.toLocaleString()}\n`; });
   }
-  msg += `\n🔗 <a href="${ENV.dashboardUrl}">ดู Dashboard</a>`;
+  msg += `\n🔗 <a href="${ENV.dashboardUrl}">Dashboard</a>`;
   return msg;
 }
 
 export function buildWpDbLatencyAlert(latencyMs: number, status: "slow" | "critical"): string {
   const icon = status === "critical" ? "🔴" : "🟡";
   const label = status === "critical" ? "วิกฤต (CRITICAL)" : "ช้า (SLOW)";
-  const threshold = status === "critical" ? "≥ 1,000ms" : "≥ 500ms";
-  const advice = status === "critical" ? "⚠️ แนะนำให้ตรวจสอบ MySQL/MariaDB และ WP Cron ทันที" : "💡 แนะนำให้พักการรันรูปภาพ (EWWW) และตรวจสอบ Query Cache";
-  return `${icon} <b>[NCR V5.2] WordPress DB ช้าผิดปกติ!</b>\n⏱ Latency: <b>${latencyMs}ms</b> (${threshold})\nสถานะ: ${label}\n${advice}\n🔗 <a href="${ENV.dashboardUrl}">ดู Dashboard</a>`;
+  const advice = status === "critical" ? "⚠️ ตรวจสอบ MySQL/MariaDB ทันที" : "💡 พักการรัน EWWW และตรวจสอบ Query Cache";
+  return `${icon} <b>[WP DB Latency Alert]</b>\n⏱ Latency: <b>${latencyMs}ms</b> — ${label}\n${advice}\n🔗 <a href="${ENV.dashboardUrl}">Dashboard</a>`;
 }
 
 export function buildPageSpeedPayloadAlert(pageSizeMb: number): string {
-  const sizeFmt = pageSizeMb.toFixed(2);
-  return `🔴 <b>[NCR V7.0] Page Payload เกินขีดจำกัด!</b>\n📦 Page Size: <b>${sizeFmt} MB</b> (เกิน 5 MB)\n⚠️ ขนาดหน้าเว็บใหญ่เกินไปอาจทำให้ผู้ใช้มือถือโหลดช้า\n💡 แนะนำ: บีบอัดรูปภาพ, เปิด lazy load, ลด JS/CSS ที่ไม่จำเป็น\n🔗 <a href="${ENV.dashboardUrl}">ดู Dashboard</a>`;
+  return `🔴 <b>[Page Payload เกิน 5MB!]</b>\n📦 Page Size: <b>${pageSizeMb.toFixed(2)} MB</b>\n💡 บีบอัดรูป, เปิด lazy load, ลด JS/CSS\n🔗 <a href="${ENV.dashboardUrl}">Dashboard</a>`;
 }
 
 export function buildArticleSpikeAlert(spikes: { url: string; views: number; fullUrl?: string }[]): string {
-  let msg = `🚀 <b>NCR Traffic Spike Alert</b>\n━━━━━━━━━━━━━━━━━━━━━━\nพบข่าวที่มีผู้เข้าชมสูงผิดปกติใน 1 ชั่วโมงล่าสุด\n\n`;
+  let msg = `🚀 <b>NCR Traffic Spike Alert</b>\nพบข่าวที่มีผู้เข้าชมสูงผิดปกติใน 1h\n\n`;
   for (const item of spikes.slice(0, 5)) {
-    const url = item.fullUrl ?? item.url;
-    msg += `• <b>${item.views.toLocaleString()}</b> views — ${url}\n`;
+    msg += `• <b>${item.views.toLocaleString()}</b> views — ${item.fullUrl ?? item.url}\n`;
   }
-  msg += `\nคำแนะนำ: ตรวจสอบ Cache Hit, origin load และความพร้อมของบทความที่กำลัง viral`;
   return msg;
 }
 
 export function buildBruteForceLoginAlert(offenders: { ip: string; attempts: number; topPath: string }[]): string {
-  let msg = `🛡️ <b>NCR Brute-Force Login Alert</b>\n━━━━━━━━━━━━━━━━━━━━━━\nพบ IP พยายาม login/admin ผิดพลาดสูงใน 15 นาทีล่าสุด\n\n`;
+  let msg = `🛡️ <b>NCR Brute-Force Login Alert</b>\nพบ IP พยายาม login ผิดพลาดสูงใน 15 นาที\n\n`;
   for (const item of offenders.slice(0, 5)) {
-    msg += `• <code>${item.ip}</code> — <b>${item.attempts.toLocaleString()}</b> attempts (${item.topPath})\n`;
+    msg += `• <code>${item.ip}</code> — <b>${item.attempts.toLocaleString()}</b> attempts\n`;
   }
-  msg += `\nระบบยังไม่ block อัตโนมัติจากสัญญาณนี้ เพื่อหลีกเลี่ยง false positive`;
   return msg;
 }
 
 export function buildGoogleIndexingReport(result: { skipped: boolean; reason?: string; results: { url: string; verdict: string; coverageState?: string; lastCrawlTime?: string; message?: string }[] }): string {
   if (result.skipped) {
-    return `🔎 <b>NCR Google Index Monitor</b>\n━━━━━━━━━━━━━━━━━━━━━━\nSkipped: ${result.reason ?? "not configured"}`;
+    return `🔎 <b>NCR Google Index Monitor</b>\nSkipped: ${result.reason ?? "not configured"}`;
   }
   const indexed = result.results.filter((item) => item.verdict === "indexed").length;
   const needsAttention = result.results.filter((item) => item.verdict !== "indexed");
-  let msg = `🔎 <b>NCR Google Index Monitor</b>\n━━━━━━━━━━━━━━━━━━━━━━\nIndexed: <b>${indexed}/${result.results.length}</b> URLs\n`;
+  let msg = `🔎 <b>NCR Google Index Monitor</b>\nIndexed: <b>${indexed}/${result.results.length}</b> URLs\n`;
   if (needsAttention.length > 0) {
     msg += `\n<b>Needs attention:</b>\n`;
     for (const item of needsAttention.slice(0, 5)) {
       msg += `• <code>${item.url}</code> — ${item.coverageState ?? item.message ?? item.verdict}\n`;
     }
-  } else {
-    msg += `\nAll monitored URLs are indexed or reported as indexed by Google Search Console.`;
   }
   return msg;
 }
