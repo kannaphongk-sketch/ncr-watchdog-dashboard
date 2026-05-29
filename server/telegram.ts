@@ -575,3 +575,161 @@ export function buildGoogleIndexingReport(result: { skipped: boolean; reason?: s
   }
   return msg;
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+// PATCH 2: เพิ่มต่อท้าย server/telegram.ts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build a QuickChart.io URL for a line chart of hourly traffic.
+ * Returns a URL that renders as PNG — no server-side deps needed.
+ * QuickChart is free and open-source (self-hostable).
+ */
+export function buildHourlyChartUrl(points: { label: string; requests: number }[]): string {
+  const labels = points.map((p) => p.label);
+  const data = points.map((p) => p.requests);
+  const maxVal = Math.max(...data, 1);
+  const peakIdx = data.indexOf(maxVal);
+
+  const config = {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Requests",
+          data,
+          borderColor: "#4ade80",
+          backgroundColor: "rgba(74,222,128,0.12)",
+          borderWidth: 2.5,
+          pointRadius: data.map((_, i) => (i === peakIdx ? 7 : 3)),
+          pointBackgroundColor: data.map((_, i) =>
+            i === peakIdx ? "#facc15" : "#4ade80"
+          ),
+          pointBorderColor: data.map((_, i) =>
+            i === peakIdx ? "#fbbf24" : "#4ade80"
+          ),
+          tension: 0.4,
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: "Traffic รายชั่วโมง (Bangkok UTC+7)",
+          color: "#e2e8f0",
+          font: { size: 14, weight: "bold" },
+          padding: { bottom: 12 },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#94a3b8", font: { size: 11 }, maxRotation: 0 },
+          grid: { color: "rgba(148,163,184,0.08)" },
+        },
+        y: {
+          ticks: { color: "#94a3b8", font: { size: 11 } },
+          grid: { color: "rgba(148,163,184,0.08)" },
+          beginAtZero: true,
+        },
+      },
+      backgroundColor: "#0f172a",
+      layout: { padding: { left: 8, right: 16, top: 8, bottom: 8 } },
+    },
+  };
+
+  const encoded = encodeURIComponent(JSON.stringify(config));
+  return `https://quickchart.io/chart?c=${encoded}&w=700&h=380&bkg=%230f172a&f=png`;
+}
+
+/**
+ * Build caption text shown below the hourly chart photo.
+ */
+export function buildHourlyTrafficCaption(
+  points: { label: string; requests: number }[]
+): string {
+  if (points.length === 0) return "📊 ไม่มีข้อมูล hourly traffic (24h)";
+
+  const maxReq = Math.max(...points.map((p) => p.requests));
+  const totalReq = points.reduce((s, p) => s + p.requests, 0);
+  const peakPoint = points.find((p) => p.requests === maxReq);
+  const avgReq = Math.round(totalReq / Math.max(points.length, 1));
+
+  // Find busy window: consecutive hours ≥ 70% of peak
+  const threshold = maxReq * 0.7;
+  const busyHours = points.filter((p) => p.requests >= threshold).map((p) => p.label);
+  const busyRange =
+    busyHours.length > 1
+      ? `${busyHours[0]}–${busyHours[busyHours.length - 1]}`
+      : peakPoint?.label ?? "N/A";
+
+  // Top 3 hours
+  const top3 = [...points]
+    .sort((a, b) => b.requests - a.requests)
+    .slice(0, 3)
+    .map((p, i) => `${i + 1}. ${p.label} — ${p.requests.toLocaleString()} req`);
+
+  return (
+    `📈 <b>Traffic รายชั่วโมง — 24h (Bangkok)</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `⏰ ช่วงคนดูมาก: <b>${busyRange}</b>\n` +
+    `🔝 ชั่วโมงพีค: <b>${peakPoint?.label ?? "N/A"}</b> — ${maxReq.toLocaleString()} req\n` +
+    `📊 รวม 24h: <b>${totalReq.toLocaleString()}</b> req\n` +
+    `📉 เฉลี่ย/ชั่วโมง: <b>${avgReq.toLocaleString()}</b> req\n\n` +
+    `🏅 <b>Top 3 ชั่วโมง:</b>\n${top3.join("\n")}`
+  );
+}
+
+/**
+ * Send a photo to Telegram via URL (uses sendPhoto endpoint).
+ * photo can be a URL to any publicly accessible image (e.g. QuickChart PNG).
+ */
+export async function sendTelegramPhoto(
+  photoUrl: string,
+  caption: string,
+  override?: TelegramCredentialsOverride
+): Promise<TelegramSendResult> {
+  const botToken = resolveTelegramBotToken(override);
+  const chatIds = normalizeTelegramChatIds(override?.chatIds);
+
+  if (!botToken || chatIds.length === 0) {
+    return { success: false, error: "Missing Telegram credentials" };
+  }
+
+  const messageIds: number[] = [];
+  const errors: string[] = [];
+
+  await Promise.all(
+    chatIds.map(async (chatId) => {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo: photoUrl,
+            caption,
+            parse_mode: "HTML",
+          }),
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          result?: { message_id: number };
+          description?: string;
+        };
+        if (data.ok) {
+          if (data.result?.message_id !== undefined) messageIds.push(data.result.message_id);
+        } else {
+          errors.push(data.description ?? "sendPhoto failed");
+        }
+      } catch (err) {
+        errors.push((err as Error).message);
+      }
+    })
+  );
+
+  if (errors.length > 0) return { success: false, messageIds, error: errors.join("; ") };
+  return { success: true, messageId: messageIds[0], messageIds };
+}
