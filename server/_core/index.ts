@@ -1,3 +1,4 @@
+import { handleWpWatchdog } from "../wpWatchdog";
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
@@ -28,7 +29,7 @@ import {
   handle404SpikeDetection,
   handleCacheEfficiencyAudit,
   handleFBTrafficValidation,
-  handleCacheWarmup,
+  handleCacheWarmup,app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
   handlePageSpeedPayloadAlert,
 } from "../heartbeatHandlers";
 import { handleWpPublish } from "../webhookHandlers";
