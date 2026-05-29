@@ -94,7 +94,18 @@ export interface ActiveBrokenLinksCount {
   count: number;
 }
 
-const BACKEND_ORIGIN = "https://ncr-watchdog-dashboard.pages.dev";
+export interface TopPost {
+  path: string;
+  count: number;
+  pct: number;
+}
+
+export interface TopPostsData {
+  posts: TopPost[];
+  available: boolean;
+}
+
+const BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
 
 async function fetchProc<T>(proc: string): Promise<T> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/trpc/${proc}?batch=1`, {
@@ -137,6 +148,7 @@ export interface DashboardData {
   latencyTimeline: LatencyPoint[];
   securityLevel: SecurityLevel | null;
   activeBrokenLinksCount: ActiveBrokenLinksCount | null;
+  topPosts: TopPostsData | null;
 }
 
 export interface DashboardActions {
@@ -179,7 +191,7 @@ export function useDashboard(refreshInterval = 60_000) {
       }));
       setLoading(false);
       setLastUpdated(new Date());
-      const [historyR, schedulerR, alertsR, telegramR, latencyR, securityR, brokenR] =
+      const [historyR, schedulerR, alertsR, telegramR, latencyR, securityR, brokenR, topPostsR] =
         await Promise.allSettled([
           fetchProc<HistoryRecord[]>("monitor.history"),
           fetchProc<SchedulerStatus>("monitor.schedulerStatus"),
@@ -188,7 +200,8 @@ export function useDashboard(refreshInterval = 60_000) {
           fetchProc<LatencyPoint[]>("wpSentinel.getLatencyTimeline"),
           fetchProc<SecurityLevel>("monitor.securityLevel"),
           fetchProc<ActiveBrokenLinksCount>("monitor.activeBrokenLinksCount"),
-        ]);
+          fetchProc<TopPostsData>("monitor.topPosts"),
+]);
       if (!isMounted.current) return;
       setData(prev => ({
         ...prev,
@@ -199,6 +212,7 @@ export function useDashboard(refreshInterval = 60_000) {
         latencyTimeline: latencyR.status === "fulfilled" ? (latencyR.value ?? []) : prev.latencyTimeline,
         securityLevel: securityR.status === "fulfilled" ? securityR.value : prev.securityLevel,
         activeBrokenLinksCount: brokenR.status === "fulfilled" ? brokenR.value : prev.activeBrokenLinksCount,
+        topPosts: topPostsR.status === "fulfilled" ? topPostsR.value : prev.topPosts,
       }));
     } finally {
       if (isMounted.current) setRefreshing(false);
