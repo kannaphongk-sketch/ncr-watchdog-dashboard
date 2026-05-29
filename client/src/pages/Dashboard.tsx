@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useMemo } from "react";
 import { useDashboard } from "@/hooks/useDashboard";
+import type { TopPost } from "@/hooks/useDashboard";
 import { toast } from "sonner";
 import {
   Activity,
@@ -228,6 +229,7 @@ export default function Dashboard() {
 
   // ── DATA: fetch directly from Pages Function (bypasses Express) ──────────
   const { data, loading, refreshing, actions } = useDashboard();
+  const topPosts = data.topPosts;
 
   const statusQuery        = { data: data.status,              isLoading: loading && !data.status,     isFetching: refreshing };
   const cfQuery            = { data: data.analytics,           isLoading: loading && !data.analytics,  isFetching: false };
@@ -239,6 +241,7 @@ export default function Dashboard() {
   const latencyTimelineQuery = { data: data.latencyTimeline ?? [], isLoading: loading,                 isFetching: isSentinelRefreshing, dataUpdatedAt: data.latencyTimeline?.length ? Date.now() : undefined };
   const securityLevelQuery = { data: data.securityLevel,       isLoading: loading };
   const activeBrokenLinksCountQuery = { data: data.activeBrokenLinksCount, isLoading: loading };
+  // topPosts is accessed directly via data.topPosts above
   const brokenLinksQuery   = { data: [] as unknown[], isLoading: false, isError: false };
   const cacheHistoryQuery  = { data: [] as unknown[], isLoading: false };
   const cacheDiagnosticQuery = { data: null as null, isLoading: false };
@@ -870,6 +873,71 @@ export default function Dashboard() {
                       <span className="text-xs text-muted-foreground font-mono ml-auto">{formatTime(a.createdAt)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{a.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+
+        {/* ─── Top 10 URLs ─────────────────────────────────────────── */}
+        <section className="rounded-xl border border-border/60 bg-card p-6">
+          <SectionHeader
+            icon={TrendingUp}
+            title="Top 10 URLs (24h)"
+            sub="หน้าที่มีผู้เข้าชมมากที่สุดใน 24 ชั่วโมงล่าสุด"
+          />
+          {loading && !topPosts ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-10 rounded-lg bg-white/5 animate-pulse" />
+              ))}
+            </div>
+          ) : !topPosts?.available || topPosts.posts.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
+              <BarChart3 className="w-8 h-8 opacity-30" />
+              ไม่มีข้อมูล Top URLs — รอ Cloudflare Analytics update
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {topPosts.posts.map((post, i) => (
+                <div key={post.path} className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-white/[0.03] transition-colors">
+                  {/* Rank */}
+                  <span className={`text-xs font-bold w-6 text-center flex-shrink-0 ${
+                    i === 0 ? "text-amber-400" : i === 1 ? "text-slate-300" : i === 2 ? "text-amber-700" : "text-muted-foreground/50"
+                  }`}>
+                    {i + 1}
+                  </span>
+                  {/* Bar + Path */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <a
+                        href={`https://nakornchiangrainews.com${post.path}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-mono text-foreground/80 hover:text-primary truncate max-w-[70%] transition-colors"
+                      >
+                        {post.path}
+                      </a>
+                      <span className="text-xs font-mono text-muted-foreground ml-2 flex-shrink-0">
+                        {post.count.toLocaleString()} req
+                      </span>
+                    </div>
+                    {/* Horizontal bar */}
+                    <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{
+                          width: `${post.pct}%`,
+                          background: i === 0
+                            ? "oklch(0.78 0.18 80)"
+                            : i < 3
+                            ? "oklch(0.65 0.18 240)"
+                            : "oklch(0.45 0.08 240)",
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
