@@ -35,7 +35,6 @@ async function handleCfAnalytics(env: CloudflareFunctionEnv) {
           httpRequests1dGroups(
             limit: 2,
             filter: { date_geq: "${yesterday}", date_leq: "${today}" }
-            orderBy: [date_DESC]
           ) {
             sum { requests cachedRequests bytes threats pageViews }
             uniq { uniques }
