@@ -2,8 +2,7 @@
 // หาบรรทัด: if (proc.includes("monitor.cfAnalytics")) return handleCfAnalytics(env);
 // เพิ่มต่อจากบรรทัดนั้น:
 
-  if (proc.includes("monitor.topPosts")) return handleTopPosts(env);
-
+  if (proc.includes("monitor.cfAnalytics")) return handleCfAnalytics(env);
 // และเพิ่มฟังก์ชัน handleTopPosts ก่อน handleProcedure:
 
 async function handleTopPosts(env: CloudflareFunctionEnv) {
