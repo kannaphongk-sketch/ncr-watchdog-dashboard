@@ -423,7 +423,7 @@ export async function handleDailyMorning(req: Request, res: Response) {
     // Send Top Posts report as a separate message (daily)
     try {
       const topPosts = await getTopPosts(1, 10);
-      const topPostsMsg = buildTopPostsReport("daily", topPosts);
+      const topPostsMsg = buildTopPostsReport("daily", topPosts, cfData.countryTraffic);
       await sendTelegramMessage(topPostsMsg);
     } catch (e) {
       console.warn("[heartbeat:daily-morning] top-posts failed:", e);
