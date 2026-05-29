@@ -60,3 +60,28 @@ async function handleCfAnalytics(env: CloudflareFunctionEnv) {
     };
   }
 }
+
+async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promise<unknown> {
+  if (proc.includes("monitor.telegramConfig")) {
+    const chatIds = normalizeTelegramChatIds(env);
+    const botToken = getTelegramBotToken(env);
+    return { configured: chatIds.length > 0, botConfigured: Boolean(botToken), chatIds, status: "configured" };
+  }
+  if (proc.includes("monitor.quickStatus")) return handleQuickStatus(env);
+  if (proc.includes("monitor.runCheck")) { const d = await handleQuickStatus(env); return { ...d, alertsFired: [], autoFixApplied: false }; }
+  if (proc.includes("monitor.cfAnalytics")) return handleCfAnalytics(env);
+  if (proc.includes("monitor.purgeCache")) return handlePurgeCache(env);
+  if (proc.includes("monitor.sendTestReport")) return handleSendTestReport(env);
+  if (proc.includes("monitor.history")) return [];
+  if (proc.includes("monitor.alerts")) return [];
+  if (proc.includes("monitor.schedulerStatus")) return { currentBangkokTime: new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }), schedules: [] };
+  if (proc.includes("monitor.securityLevel")) return { level: "medium" };
+  if (proc.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
+  if (proc.includes("monitor.brokenLinks")) return [];
+  if (proc.includes("monitor.cacheDiagnostic")) return null;
+  if (proc.includes("monitor.cacheHistory")) return [];
+  if (proc.includes("monitor.summary")) return {};
+  if (proc.includes("wpSentinel.getV6Data")) return { operatingMode: "Autonomous Caretaker Active", wpStatus: "ok", wpHealth: "stable", dbLatencyMs: 0, memoryUsageMb: 0, memoryStatus: "optimal", diskFreeGb: 0, diskSystemManaged: true, optimizedImages: 0, totalImages: 0, verified404: 0, cacheStatusLabel: "Cache Status: Checking", statusCritical: false, healthAlert: false, lastSystemCheck: null };
+  if (proc.includes("wpSentinel.getLatencyTimeline")) return [];
+  return [];
+}
