@@ -53,7 +53,8 @@ async function handleCfAnalytics(env: CloudflareFunctionEnv) {
     if (!groups.length) return {
       totalRequests: 0, cachedRequests: 0, bandwidth: 0, threats: 0,
       cacheHitRate: 0, count404: 0, visits: 0, pageViews: 0,
-      top404Urls: [], analyticsAvailable: false, unavailableReason: "No data"
+      top404Urls: [], analyticsAvailable: false, unavailableReason: "No data",
+      _debug: { errors: json?.errors, data: json?.data, yesterday, today }
     };
     const totals = groups.reduce((acc: any, g: any) => ({
       requests: acc.requests + (g.sum.requests || 0),
