@@ -105,7 +105,7 @@ export interface TopPostsData {
   available: boolean;
 }
 
-const BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+const BACKEND_ORIGIN = "https://ncr-watchdog-dashboard.pages.dev";
 
 async function fetchProc<T>(proc: string): Promise<T> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/trpc/${proc}?batch=1`, {
