@@ -1182,3 +1182,90 @@ export async function getBruteForceLoginAttempts(threshold = 20): Promise<BruteF
     return empty;
   }
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+// PATCH 1: เพิ่มต่อท้าย server/cloudflare.ts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface HourlyTrafficPoint {
+  /** Hour in Bangkok time (0-23) */
+  hour: number;
+  /** Display label e.g. "09:00" */
+  label: string;
+  /** Request count */
+  requests: number;
+}
+
+/**
+ * Get hourly traffic breakdown for the last 24h.
+ * Uses httpRequests1hGroups (1h buckets) from Cloudflare GraphQL.
+ */
+export async function getHourlyTraffic(): Promise<HourlyTrafficPoint[]> {
+  const { ENV } = await import("./_core/env");
+  if (!ENV.cfApiToken || !ENV.cfZoneId) return [];
+
+  const now = new Date();
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const until = now.toISOString();
+
+  const query = `{
+    viewer {
+      zones(filter: { zoneTag: "${ENV.cfZoneId}" }) {
+        httpRequests1hGroups(
+          limit: 25
+          filter: { datetime_geq: "${since}", datetime_leq: "${until}" }
+        ) {
+          sum { requests }
+          dimensions { datetime }
+        }
+      }
+    }
+  }`;
+
+  try {
+    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ENV.cfApiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+    const json = (await res.json()) as {
+      data?: {
+        viewer?: {
+          zones?: {
+            httpRequests1hGroups?: {
+              sum: { requests: number };
+              dimensions: { datetime: string };
+            }[];
+          }[];
+        };
+      };
+      errors?: { message: string }[];
+    };
+
+    if (json.errors?.length) {
+      console.warn("[getHourlyTraffic] errors:", json.errors);
+      return [];
+    }
+
+    const groups = json.data?.viewer?.zones?.[0]?.httpRequests1hGroups ?? [];
+    const BANGKOK_OFFSET = 7 * 60 * 60 * 1000;
+
+    return groups
+      .map((g) => {
+        const utcDate = new Date(g.dimensions.datetime);
+        const bkkDate = new Date(utcDate.getTime() + BANGKOK_OFFSET);
+        const hour = bkkDate.getUTCHours();
+        return {
+          hour,
+          label: `${String(hour).padStart(2, "0")}:00`,
+          requests: g.sum.requests,
+        };
+      })
+      .sort((a, b) => a.hour - b.hour);
+  } catch (err) {
+    console.warn("[getHourlyTraffic] fetch error:", err);
+    return [];
+  }
+}
