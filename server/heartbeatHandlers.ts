@@ -403,7 +403,19 @@ async function runExecutiveBriefLogic(): Promise<void> {
 /**
  * Heartbeat: daily morning report at 09:00 BKK
  */
-export async function handleDailyMorning(req: Request, res: Response) {
+export async function handleDailyMorning(req: Request, res: Response) { try {
+      const { getHourlyTraffic } = await import("./cloudflare");
+      const { buildHourlyChartUrl, buildHourlyTrafficCaption, sendTelegramPhoto } = await import("./telegram");
+ 
+      const hourlyPoints = await getHourlyTraffic();
+      if (hourlyPoints.length > 0) {
+        const chartUrl = buildHourlyChartUrl(hourlyPoints);
+        const caption = buildHourlyTrafficCaption(hourlyPoints);
+        await sendTelegramPhoto(chartUrl, caption);
+      }
+    } catch (e) {
+      console.warn("[heartbeat:daily-morning] hourly-chart failed:", e);
+    }
   try {
     const user = await sdk.authenticateRequest(req);
     if (!user.isCron) return res.status(403).json({ error: "cron-only" });
