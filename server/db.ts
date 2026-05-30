@@ -697,18 +697,20 @@ export async function getWpDbLatencyTimeline(hours = 24): Promise<Array<{ ts: nu
     .from(wpDbLatencyLog)
     .where(gt(wpDbLatencyLog.createdAt, since))
     .orderBy(wpDbLatencyLog.createdAt); // oldest first for chart
- try {
+export async function getLatencyTimeline(hours = 24) {
+  try {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
     return await db
       .select({
-        ts: monitorChecks.createdAt,
-        latencyMs: monitorChecks.ttfbMs,
-        status: monitorChecks.cacheStatus,
+        ts: wpDbLatencyLog.createdAt,
+        latencyMs: wpDbLatencyLog.latencyMs,
+        status: wpDbLatencyLog.status,
       })
-      .from(monitorChecks)
-      .where(gte(monitorChecks.createdAt, since))
-      .orderBy(asc(monitorChecks.createdAt))
+      .from(wpDbLatencyLog)
+      .where(gte(wpDbLatencyLog.createdAt, since))
+      .orderBy(asc(wpDbLatencyLog.createdAt))
       .limit(100);
   } catch {
     return [];
   }
+}
