@@ -105,7 +105,24 @@ export interface TopPostsData {
   available: boolean;
 }
 
-const BACKEND_ORIGIN = "https://ncr-watchdog-dashboard.pages.dev";
+export interface NoindexPost {
+  id: number;
+  title: string;
+  link: string;
+  editUrl: string;
+  hasNoindex: boolean;
+  path: string;
+}
+
+export interface NoindexPostsData {
+  posts: NoindexPost[];
+  noindexPosts: NoindexPost[];
+  noindexCount: number;
+  available: boolean;
+  checkedAt?: string;
+}
+
+const BACKEND_ORIGIN = "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
 
 async function fetchProc<T>(proc: string): Promise<T> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/trpc/${proc}?batch=1`, {
@@ -149,6 +166,7 @@ export interface DashboardData {
   securityLevel: SecurityLevel | null;
   activeBrokenLinksCount: ActiveBrokenLinksCount | null;
   topPosts: TopPostsData | null;
+  noindexPosts: NoindexPostsData | null;
 }
 
 export interface DashboardActions {
@@ -191,7 +209,7 @@ export function useDashboard(refreshInterval = 60_000) {
       }));
       setLoading(false);
       setLastUpdated(new Date());
-      const [historyR, schedulerR, alertsR, telegramR, latencyR, securityR, brokenR, topPostsR] =
+      const [historyR, schedulerR, alertsR, telegramR, latencyR, securityR, brokenR, topPostsR, noindexR] =
         await Promise.allSettled([
           fetchProc<HistoryRecord[]>("monitor.history"),
           fetchProc<SchedulerStatus>("monitor.schedulerStatus"),
@@ -213,6 +231,7 @@ export function useDashboard(refreshInterval = 60_000) {
         securityLevel: securityR.status === "fulfilled" ? securityR.value : prev.securityLevel,
         activeBrokenLinksCount: brokenR.status === "fulfilled" ? brokenR.value : prev.activeBrokenLinksCount,
         topPosts: topPostsR.status === "fulfilled" ? topPostsR.value : prev.topPosts,
+        noindexPosts: noindexR.status === "fulfilled" ? noindexR.value : prev.noindexPosts,
       }));
     } finally {
       if (isMounted.current) setRefreshing(false);
