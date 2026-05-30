@@ -51,7 +51,22 @@ export async function handleWpPublish(req: Request, res: Response) {
     if (!allowedHosts.includes(parsedUrl.hostname)) {
       return res.status(400).json({ error: "URL not allowed" });
     }
-
+// เพิ่มหลัง validate URL ก่อน Protocol 3
+// Purge Cloudflare cache สำหรับ URL นี้
+const zoneId = process.env.CLOUDFLARE_ZONE_ID || ENV.cfZoneId;
+const apiToken = process.env.CLOUDFLARE_API_TOKEN || ENV.cfApiToken;
+if (zoneId && apiToken) {
+  try {
+    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ files: [url] }),
+    });
+    console.log(`[webhook] purged cache for ${url}`);
+  } catch (e) {
+    console.warn("[webhook] purge failed:", e);
+  }
+}
     // Protocol 3: ONE silent GET request to warm Cloudflare Edge Cache
     let warmed = false;
     try {
