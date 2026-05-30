@@ -130,6 +130,18 @@ async function startServer() {
     try { const { getLatencyTimeline } = await import("../db"); res.json(await getLatencyTimeline()); }
     catch { res.json([]); }
   });
+  app.get("/api/public/history", async (_req, res) => {
+    try { const { getRecentChecks } = await import("../db"); res.json(await getRecentChecks(100)); }
+    catch { res.json([]); }
+  });
+  app.get("/api/public/alerts", async (_req, res) => {
+    try { const { getRecentAlerts } = await import("../db"); res.json(await getRecentAlerts(20)); }
+    catch { res.json([]); }
+  });
+  app.get("/api/public/latency", async (_req, res) => {
+    try { const { getLatencyTimeline } = await import("../db"); res.json(await getLatencyTimeline()); }
+    catch { res.json([]); }
+  });
   app.post("/api/webhook/wp-publish", handleWpPublish);
   app.post("/api/scheduled/cf-snapshot", handleCFSnapshot);
   app.post("/api/scheduled/morning-brief", handleMorningBrief);
