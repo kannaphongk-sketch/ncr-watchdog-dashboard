@@ -159,6 +159,16 @@ async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promis
   if (proc.includes("monitor.topPosts")) return handleTopPosts(env);
   if (proc.includes("monitor.purgeCache")) return handlePurgeCache(env);
   if (proc.includes("monitor.sendTestReport")) return handleSendTestReport(env);
+  if (proc.includes("monitor.history")) {
+  const b = env.BACKEND_ORIGIN || "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+  try { const r = await fetch(`${b}/api/public/history`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
+if (proc.includes("monitor.alerts")) {
+  const b = env.BACKEND_ORIGIN || "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+  try { const r = await fetch(`${b}/api/public/alerts`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
   if (proc.includes("monitor.schedulerStatus")) return { currentBangkokTime: new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }), schedules: [] };
   if (proc.includes("monitor.securityLevel")) return { level: "medium" };
   if (proc.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
