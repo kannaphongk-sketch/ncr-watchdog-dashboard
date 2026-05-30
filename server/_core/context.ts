@@ -1,14 +1,27 @@
-if (proc.includes("monitor.history")) {
-  const backendOrigin = env.BACKEND_ORIGIN || "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
+import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
+import type { User } from "../../drizzle/schema";
+import { sdk } from "./sdk";
+
+export type TrpcContext = {
+  req: CreateExpressContextOptions["req"];
+  res: CreateExpressContextOptions["res"];
+  user: User | null;
+};
+
+export async function createContext(
+  opts: CreateExpressContextOptions
+): Promise<TrpcContext> {
+  let user: User | null = null;
+
   try {
-    const r = await fetch(`${backendOrigin}/api/public/history`);
-    return r.ok ? await r.json() : [];
-  } catch { return []; }
-}
-if (proc.includes("monitor.alerts")) {
-  const backendOrigin = env.BACKEND_ORIGIN || "https://ncr-watchdog-backend.kannaphong-k.workers.dev";
-  try {
-    const r = await fetch(`${backendOrigin}/api/public/alerts`);
-    return r.ok ? await r.json() : [];
-  } catch { return []; }
+    user = await sdk.authenticateRequest(opts.req);
+  } catch (error) {
+    user = null;
+  }
+
+  return {
+    req: opts.req,
+    res: opts.res,
+    user,
+  };
 }
