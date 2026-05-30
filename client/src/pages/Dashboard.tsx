@@ -881,6 +881,52 @@ export default function Dashboard() {
         </section>
 
 
+
+        {/* ─── Noindex Alert ───────────────────────────────────────────── */}
+        {data.noindexPosts && data.noindexPosts.noindexCount > 0 && (
+          <section className="rounded-xl border border-red-500/40 bg-red-500/5 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-4 h-4 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-red-400">
+                  ⚠️ พบ noindex บนบทความที่เผยแพร่แล้ว ({data.noindexPosts.noindexCount} บทความ)
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  บทความเหล่านี้จะไม่ปรากฏใน Google — กรุณาแก้ไขทันที
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {data.noindexPosts.noindexPosts.map((post: any) => (
+                <div key={post.id} className="flex items-center justify-between gap-3 rounded-lg bg-red-500/10 px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <a
+                      href={post.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-foreground/90 hover:text-red-300 truncate block transition-colors"
+                    >
+                      {post.title || post.path}
+                    </a>
+                    <span className="text-xs text-muted-foreground font-mono">{post.path}</span>
+                  </div>
+                  <a
+                    href={post.editUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 px-2.5 py-1.5 text-xs text-red-300 font-medium transition-colors"
+                  >
+                    <Search className="w-3 h-3" />
+                    แก้ไขบน WordPress
+                  </a>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* ─── Top 10 URLs ─────────────────────────────────────────── */}
         <section className="rounded-xl border border-border/60 bg-card p-6">
           <SectionHeader
