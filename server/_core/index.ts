@@ -30,7 +30,9 @@ import {
   handleCacheEfficiencyAudit,
   handleFBTrafficValidation,
   handleCacheWarmup,
-  import { handleWpWatchdog } from "../wpWatchdog";
+  } from "../heartbeatHandlers";
+import { handleWpWatchdog } from "../wpWatchdog";  // ← ถูกต้อง
+import { handleWpPublish } from "../webhookHandlers";
   handlePageSpeedPayloadAlert,
 } from "../heartbeatHandlers";
 import { handleWpPublish } from "../webhookHandlers";
