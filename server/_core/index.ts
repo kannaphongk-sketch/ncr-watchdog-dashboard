@@ -32,6 +32,7 @@ import {
   handlePageSpeedPayloadAlert,
 } from "../heartbeatHandlers";
 import { handleWpWatchdog } from "../wpWatchdog";
+import { handleGscWatchdog } from "../googleSearchConsole";
 import { handleWpPublish } from "../webhookHandlers";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -135,7 +136,7 @@ app.get("/api/public/alerts", async (_req, res) => {
   app.post("/api/scheduled/cache-warmup", handleCacheWarmup);
   app.post("/api/scheduled/pagespeed-payload", handlePageSpeedPayloadAlert);
   app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
-
+  import { handleGscWatchdog } from "../googleSearchConsole";
   app.use(
     "/api/trpc",
     createExpressMiddleware({
