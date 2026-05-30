@@ -883,7 +883,7 @@ export default function Dashboard() {
 
 
         {/* ─── Noindex Alert ───────────────────────────────────────────── */}
-        {data.noindexPosts && data.noindexPosts.noindexCount > 0 && (
+        {data.noindexPosts?.available && (data.noindexPosts?.noindexCount ?? 0) > 0 && (
           <section className="rounded-xl border border-red-500/40 bg-red-500/5 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
@@ -899,7 +899,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="space-y-2">
-              {data.noindexPosts.noindexPosts.map((post: any) => (
+              {(data.noindexPosts?.noindexPosts ?? []).map((post: any) => (
                 <div key={post.id} className="flex items-center justify-between gap-3 rounded-lg bg-red-500/10 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
                     <a
