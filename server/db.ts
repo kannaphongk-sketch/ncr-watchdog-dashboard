@@ -698,7 +698,9 @@ export async function getWpDbLatencyTimeline(hours = 24): Promise<Array<{ ts: nu
     .where(gt(wpDbLatencyLog.createdAt, since))
     .orderBy(wpDbLatencyLog.createdAt); // oldest first for chart
   return rows.map((r) => ({ ts: new Date(r.createdAt).getTime(), latencyMs: r.latencyMs, status: r.status }));
-}export async function getLatencyTimeline(hours = 24) {
+}
+
+export async function getLatencyTimeline(hours = 24) {
   try {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
     return await db
