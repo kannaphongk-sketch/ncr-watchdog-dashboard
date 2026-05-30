@@ -95,7 +95,22 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+// Public endpoints (no auth required)
+app.get("/api/public/history", async (_req, res) => {
+  try {
+    const { getRecentChecks } = await import("../db");
+    const checks = await getRecentChecks(100);
+    res.json(checks);
+  } catch { res.json([]); }
+});
 
+app.get("/api/public/alerts", async (_req, res) => {
+  try {
+    const { getRecentAlerts } = await import("../db");
+    const alerts = await getRecentAlerts(20);
+    res.json(alerts);
+  } catch { res.json([]); }
+});
   app.post("/api/webhook/wp-publish", handleWpPublish);
 
   app.post("/api/scheduled/cf-snapshot", handleCFSnapshot);
