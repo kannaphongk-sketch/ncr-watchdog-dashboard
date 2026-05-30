@@ -29,7 +29,8 @@ import {
   handle404SpikeDetection,
   handleCacheEfficiencyAudit,
   handleFBTrafficValidation,
-  handleCacheWarmup,app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
+  handleCacheWarmup,
+  handleWpWatchdog,
   handlePageSpeedPayloadAlert,
 } from "../heartbeatHandlers";
 import { handleWpPublish } from "../webhookHandlers";
@@ -124,7 +125,7 @@ async function startServer() {
   app.post("/api/scheduled/cache-efficiency-audit", handleCacheEfficiencyAudit);
   app.post("/api/scheduled/fb-traffic-validation", handleFBTrafficValidation);
   // V5.1: Performance Stabilizer
-  app.post("/api/scheduled/cache-warmup", handleCacheWarmup);
+  app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
   app.post("/api/scheduled/pagespeed-payload", handlePageSpeedPayloadAlert);
   // tRPC API
   app.use(
