@@ -1,4 +1,3 @@
-import { handleWpWatchdog }
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
@@ -39,18 +38,14 @@ import { handleWpPublish } from "../webhookHandlers";
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const server = net.createServer();
-    server.listen(port, () => {
-      server.close(() => resolve(true));
-    });
+    server.listen(port, () => { server.close(() => resolve(true)); });
     server.on("error", () => resolve(false));
   });
 }
 
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
   for (let port = startPort; port < startPort + 20; port++) {
-    if (await isPortAvailable(port)) {
-      return port;
-    }
+    if (await isPortAvailable(port)) return port;
   }
   throw new Error(`No available port found starting from ${startPort}`);
 }
@@ -60,9 +55,7 @@ async function startServer() {
   const server = createServer(app);
 
   const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS ?? process.env.FRONTEND_URL ?? "")
-    .split(",")
-    .map(origin => origin.trim().replace(/\/$/, ""))
-    .filter(Boolean);
+    .split(",").map(o => o.trim().replace(/\/$/, "")).filter(Boolean);
 
   const allowedOrigins = new Set<string>([
     "https://ncr-watchdog-dashboard.pages.dev",
@@ -74,11 +67,9 @@ async function startServer() {
   app.use((req, res, next) => {
     const origin = req.headers.origin?.replace(/\/$/, "");
     const isAllowedOrigin =
-      !origin ||
-      allowedOrigins.has(origin) ||
+      !origin || allowedOrigins.has(origin) ||
       /^https:\/\/[a-z0-9-]+\.ncr-watchdog-dashboard\.pages\.dev$/i.test(origin) ||
       /^https:\/\/[a-z0-9-]+\.ncr-dashboard\.pages\.dev$/i.test(origin);
-
     if (origin && isAllowedOrigin) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header("Vary", "Origin");
@@ -86,10 +77,7 @@ async function startServer() {
     res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, trpc-accept");
     res.header("Access-Control-Max-Age", "86400");
-    if (req.method === "OPTIONS") {
-      res.sendStatus(isAllowedOrigin ? 204 : 403);
-      return;
-    }
+    if (req.method === "OPTIONS") { res.sendStatus(isAllowedOrigin ? 204 : 403); return; }
     next();
   });
 
@@ -97,24 +85,18 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
-// Public endpoints (no auth required)
-app.get("/api/public/history", async (_req, res) => {
-  try {
-    const { getRecentChecks } = await import("../db");
-    const checks = await getRecentChecks(100);
-    res.json(checks);
-  } catch { res.json([]); }
-});
 
-app.get("/api/public/alerts", async (_req, res) => {
-  try {
-    const { getRecentAlerts } = await import("../db");
-    const alerts = await getRecentAlerts(20);
-    res.json(alerts);
-  } catch { res.json([]); }
-});
+  // Public endpoints (no auth required)
+  app.get("/api/public/history", async (_req, res) => {
+    try { const { getRecentChecks } = await import("../db"); res.json(await getRecentChecks(100)); }
+    catch { res.json([]); }
+  });
+  app.get("/api/public/alerts", async (_req, res) => {
+    try { const { getRecentAlerts } = await import("../db"); res.json(await getRecentAlerts(20)); }
+    catch { res.json([]); }
+  });
+
   app.post("/api/webhook/wp-publish", handleWpPublish);
-
   app.post("/api/scheduled/cf-snapshot", handleCFSnapshot);
   app.post("/api/scheduled/morning-brief", handleMorningBrief);
   app.post("/api/scheduled/monitor-check", handleMonitorCheck);
@@ -138,13 +120,8 @@ app.get("/api/public/alerts", async (_req, res) => {
   app.post("/api/scheduled/pagespeed-payload", handlePageSpeedPayloadAlert);
   app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
   app.post("/api/scheduled/gsc-watchdog", handleGscWatchdog);
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
+
+  app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
@@ -154,14 +131,8 @@ app.get("/api/public/alerts", async (_req, res) => {
 
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);
-
-  if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
-  }
-
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
-  });
+  if (port !== preferredPort) console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
+  server.listen(port, () => console.log(`Server running on http://localhost:${port}/`));
 }
 
 startServer().catch(console.error);
