@@ -1,3 +1,4 @@
+import { handleWpWatchdog }
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
@@ -136,7 +137,7 @@ app.get("/api/public/alerts", async (_req, res) => {
   app.post("/api/scheduled/cache-warmup", handleCacheWarmup);
   app.post("/api/scheduled/pagespeed-payload", handlePageSpeedPayloadAlert);
   app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
-  import { handleGscWatchdog } from "../googleSearchConsole";
+  app.post("/api/scheduled/gsc-watchdog", handleGscWatchdog);
   app.use(
     "/api/trpc",
     createExpressMiddleware({
