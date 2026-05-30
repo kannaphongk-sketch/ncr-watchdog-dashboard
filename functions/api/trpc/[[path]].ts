@@ -159,13 +159,9 @@ async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promis
   if (proc.includes("monitor.topPosts")) return handleTopPosts(env);
   if (proc.includes("monitor.purgeCache")) return handlePurgeCache(env);
   if (proc.includes("monitor.sendTestReport")) return handleSendTestReport(env);
-  if (proc.includes("monitor.history")) return [];
-  if (proc.includes("monitor.alerts")) return [];
   if (proc.includes("monitor.schedulerStatus")) return { currentBangkokTime: new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }), schedules: [] };
   if (proc.includes("monitor.securityLevel")) return { level: "medium" };
   if (proc.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
-  if (proc.includes("monitor.brokenLinks")) return [];
-  if (proc.includes("monitor.cacheDiagnostic")) return null;
   if (proc.includes("monitor.cacheHistory")) return [];
   if (proc.includes("monitor.summary")) return {};
   if (proc.includes("monitor.approvePurge")) return { success: false, message: "not implemented" };
