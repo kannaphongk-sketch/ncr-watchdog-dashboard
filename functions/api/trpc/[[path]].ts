@@ -207,7 +207,11 @@ async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promis
   if (proc.includes("monitor.approvePurge")) return { success: false, message: "not implemented" };
   if (proc.includes("monitor.markFixed")) return {};
   if (proc.includes("wpSentinel.getV6Data")) return { operatingMode: "Autonomous Caretaker Active", wpStatus: "ok", wpHealth: "stable", dbLatencyMs: 0, memoryUsageMb: 0, memoryStatus: "optimal", diskFreeGb: 0, diskSystemManaged: true, optimizedImages: 0, totalImages: 0, verified404: 0, cacheStatusLabel: "Cache Status: Checking", statusCritical: false, healthAlert: false, lastSystemCheck: null };
-  if (proc.includes("wpSentinel.getLatencyTimeline")) return [];
+  if (proc.includes("wpSentinel.getLatencyTimeline")) {
+  const b = "https://ncr-backend.nakornchiangrainews.com";
+  try { const r = await fetch(`${b}/api/public/latency`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
   return [];
 }
 
