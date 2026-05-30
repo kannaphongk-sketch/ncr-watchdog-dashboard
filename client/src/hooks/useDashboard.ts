@@ -182,6 +182,7 @@ export function useDashboard(refreshInterval = 60_000) {
     status: null, analytics: null, sentinel: null, history: [],
     scheduler: null, alerts: [], telegramConfig: null,
     latencyTimeline: [], securityLevel: null, activeBrokenLinksCount: null,
+    topPosts: null, noindexPosts: null,
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -219,6 +220,7 @@ export function useDashboard(refreshInterval = 60_000) {
           fetchProc<SecurityLevel>("monitor.securityLevel"),
           fetchProc<ActiveBrokenLinksCount>("monitor.activeBrokenLinksCount"),
           fetchProc<TopPostsData>("monitor.topPosts"),
+          fetchProc<NoindexPostsData>("monitor.noindexPosts"),
 ]);
       if (!isMounted.current) return;
       setData(prev => ({
