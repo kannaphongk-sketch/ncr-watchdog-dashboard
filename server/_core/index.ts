@@ -96,6 +96,16 @@ async function startServer() {
     catch { res.json([]); }
   });
 
+  // Cron internal auth — inject fake cron session for Worker-triggered requests
+  app.use("/api/scheduled", (req, _res, next) => {
+    const secret = req.headers["x-cron-internal"];
+    const validSecret = process.env.CRON_SECRET || "ncr-internal-2026";
+    if (secret === validSecret) {
+      (req as any)._isCronInternal = true;
+    }
+    next();
+  });
+
   app.post("/api/webhook/wp-publish", handleWpPublish);
   app.post("/api/scheduled/cf-snapshot", handleCFSnapshot);
   app.post("/api/scheduled/morning-brief", handleMorningBrief);
