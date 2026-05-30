@@ -1,4 +1,3 @@
-import { handleWpWatchdog } from "../wpWatchdog";
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
@@ -30,11 +29,9 @@ import {
   handleCacheEfficiencyAudit,
   handleFBTrafficValidation,
   handleCacheWarmup,
-  } from "../heartbeatHandlers";
-import { handleWpWatchdog } from "../wpWatchdog";  // ← ถูกต้อง
-import { handleWpPublish } from "../webhookHandlers";
   handlePageSpeedPayloadAlert,
 } from "../heartbeatHandlers";
+import { handleWpWatchdog } from "../wpWatchdog";
 import { handleWpPublish } from "../webhookHandlers";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -94,16 +91,13 @@ async function startServer() {
     next();
   });
 
-  // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
 
-  // Protocol 3: WordPress publish webhook for cache warming
   app.post("/api/webhook/wp-publish", handleWpPublish);
 
-  // Heartbeat scheduled endpoints — MUST be registered before tRPC fallthrough
   app.post("/api/scheduled/cf-snapshot", handleCFSnapshot);
   app.post("/api/scheduled/morning-brief", handleMorningBrief);
   app.post("/api/scheduled/monitor-check", handleMonitorCheck);
@@ -114,22 +108,19 @@ async function startServer() {
   app.post("/api/scheduled/executive-brief", handleExecutiveBrief);
   app.post("/api/scheduled/keepalive", handleKeepalive);
   app.post("/api/scheduled/weekly-quality-audit", handleWeeklyQualityAudit);
-  // V3.2: Facebook integration
   app.post("/api/scheduled/fb-comment-moderation", handleFBCommentModeration);
   app.post("/api/scheduled/fb-viral-scout", handleFBViralScout);
   app.post("/api/scheduled/fb-ad-governance", handleFBAdGovernance);
   app.post("/api/scheduled/fb-ethical-responder", handleFBEthicalResponder);
-  // V4.0: AI Intelligence Modules
   app.post("/api/scheduled/viral-post-generator", handleViralPostGenerator);
   app.post("/api/scheduled/public-mood-scanner", handlePublicMoodScanner);
-  // V4.1: Performance Analytics Patch
   app.post("/api/scheduled/404-spike-detection", handle404SpikeDetection);
   app.post("/api/scheduled/cache-efficiency-audit", handleCacheEfficiencyAudit);
   app.post("/api/scheduled/fb-traffic-validation", handleFBTrafficValidation);
-  // V5.1: Performance Stabilizer
-  app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
+  app.post("/api/scheduled/cache-warmup", handleCacheWarmup);
   app.post("/api/scheduled/pagespeed-payload", handlePageSpeedPayloadAlert);
-  // tRPC API
+  app.post("/api/scheduled/wp-watchdog", handleWpWatchdog);
+
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -137,7 +128,7 @@ async function startServer() {
       createContext,
     })
   );
-  // development mode uses Vite, production mode uses static files
+
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
