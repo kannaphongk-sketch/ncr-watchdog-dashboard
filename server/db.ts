@@ -730,4 +730,3 @@ export async function getWpDbLatencyTimeline(hours = 24): Promise<Array<{ ts: nu
   } catch {
     return [];
   }
-}
