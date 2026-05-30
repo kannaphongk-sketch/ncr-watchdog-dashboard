@@ -195,8 +195,16 @@ async function handleProcedure(proc: string, env: CloudflareFunctionEnv): Promis
   if (proc.includes("monitor.noindexPosts")) return handleNoindexPosts(env);
   if (proc.includes("monitor.purgeCache")) return handlePurgeCache(env);
   if (proc.includes("monitor.sendTestReport")) return handleSendTestReport(env);
-  if (proc.includes("monitor.history")) return [];
-  if (proc.includes("monitor.alerts")) return [];
+  if (proc.includes("monitor.history")) {
+    const b = "https://ncr-backend.nakornchiangrainews.com";
+    try { const r = await fetch(`${b}/api/public/history`); return r.ok ? await r.json() : []; }
+    catch { return []; }
+  }
+  if (proc.includes("monitor.alerts")) {
+    const b = "https://ncr-backend.nakornchiangrainews.com";
+    try { const r = await fetch(`${b}/api/public/alerts`); return r.ok ? await r.json() : []; }
+    catch { return []; }
+  }
   if (proc.includes("monitor.schedulerStatus")) return { currentBangkokTime: new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }), schedules: [] };
   if (proc.includes("monitor.securityLevel")) return { level: "medium" };
   if (proc.includes("monitor.activeBrokenLinksCount")) return { count: 0 };
