@@ -71,4 +71,5 @@ export const ENV = {
   googleClientEmail: process.env.GOOGLE_CLIENT_EMAIL ?? process.env.GSC_CLIENT_EMAIL ?? "",
   googlePrivateKey: (process.env.GOOGLE_PRIVATE_KEY ?? process.env.GSC_PRIVATE_KEY ?? "").replace(/\\n/g, "\n"),
   googleSearchConsoleSiteUrl: process.env.GOOGLE_SEARCH_CONSOLE_SITE_URL ?? process.env.GSC_SITE_URL ?? "https://nakornchiangrainews.com/",
+  googleServiceAccountKey: process.env.GOOGLE_SERVICE_ACCOUNT_KEY ?? "",
 };
